@@ -1,0 +1,24 @@
+# Ambientes virtuales
+.venv/
+env/
+__pycache__/
+*.pyc
+
+# Archivos de caché y logs
+.pytest_cache/
+*.log
+mapa_validacion.html
+
+# Julia
+.julia/
+Manifest.toml
+Project.toml.backup
+
+# Archivos temporales de IDEs
+.vscode/
+.idea/
+
+# Datos crudos y pesos exportados (opcional, pero buena práctica si son pesados)
+pesos_pinn.json
+scratch_siata.py
+init_julia.jl
