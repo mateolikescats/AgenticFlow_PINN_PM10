@@ -27,8 +27,10 @@ El proyecto se está desarrollando de forma iterativa y "hueso a hueso" para gar
 ### ✅ Fase 2: Motor Físico PINN (Julia)
 **Estado:** `Completado (Script Base)`
 - **Framework**: `NeuralPDE.jl` y `ModelingToolkit.jl` por su alto rendimiento.
-- **Modelo de Viento Topológico**: Se sustituyó el viento constante por un perfil parabólico de canalización ($v_y \propto 1 - x^2$) para simular adecuadamente la dinámica del valle.
-- **Fase Interpolativa**: Entrenamiento inicial asumiendo fuentes estáticas ($S=0$) para que la PINN pre-acondicione sus pesos aprendiendo la topología de la concentración antes del descubrimiento de parámetros.
+- **Acoplamiento Boussinesq (Termodinámica)**: Acorde a las dinámicas del Valle de Aburrá (documentadas en literatura de Spitsbergen/Inversión Térmica), la ecuación de advección simple fue reemplazada por un sistema de 5 ecuaciones en un corte transversal vertical ($x, z$).
+- **Topografía como Restricción**: Se imponen *hard-constraints* en las laderas y fondo del valle (condiciones No-Slip).
+- **Flotabilidad y Estratificación**: La velocidad vertical del viento ($v_z$) está directamente acoplada al gradiente de temperatura ($T$) mediante el término de flotabilidad $\beta g (T - T_{ref})$, modelando matemáticamente la inversión térmica y acumulación de partículas en la capa límite.
+- **Redes Neuronales Múltiples**: 5 arquitecturas MLP separadas en `Lux.jl` para predecir $[u, T, v_x, v_z, P]$ evitando colapso de gradientes entre dominios físicos dispares.
 
 ### ⏳ Fase 3: Arquitectura Agéntica (CrewAI)
 **Estado:** `En Planificación`

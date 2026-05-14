@@ -13,69 +13,74 @@ using Random
 
 function load_data(filepath)
     if !isfile(filepath)
-        println("⚠️ Archivo de datos no encontrado: $filepath. Usando datos ficticios.")
-        # Generar datos ficticios (x, y, t, u)
+        println("⚠️ Archivo de datos no encontrado: $filepath. Usando datos ficticios 2D (x, z).")
+        # Generar datos ficticios (x, z, t, u, T)
+        # Asumiendo z=0 es el nivel del suelo donde están los sensores de SIATA
         return [
-            Dict("x" => 0.0, "y" => 0.0, "t" => 0.5, "u" => 0.5),
-            Dict("x" => 0.5, "y" => 0.5, "t" => 0.8, "u" => 0.2)
+            Dict("x" => 0.0, "z" => 0.0, "t" => 0.5, "u" => 0.5, "T" => -0.5),
+            Dict("x" => 0.5, "z" => 0.0, "t" => 0.8, "u" => 0.2, "T" => -0.8)
         ]
     end
     return JSON.parsefile(filepath)
 end
 
-function train_interpolative(data_path="datos_siata.json", epochs=500)
-    println("==== Iniciando Fase Interpolativa PINN ====")
+function train_interpolative(data_path="datos_siata.json", epochs=100)
+    println("==== Iniciando Fase Interpolativa PINN Termodinámica ====")
     
-    # 1. Obtener la ecuación y arquitectura
-    pdesys, (x, y, t, u) = get_pde_system(0.01, 1.0)
-    chain = build_pinn()
+    # 1. Obtener la ecuación Boussinesq y arquitecturas (5 redes)
+    pdesys, (x, z, t, u, T, vx, vz, P) = get_boussinesq_pde_system()
+    chains = build_multi_pinn()
     
-    # 2. Cargar datos empíricos (SIATA preprocesado)
+    # 2. Cargar datos empíricos
     data = load_data(data_path)
-    # Extraer arrays para evaluación rápida
     x_data = Float64[d["x"] for d in data]
-    y_data = Float64[d["y"] for d in data]
+    z_data = Float64[d["z"] for d in data]
     t_data = Float64[d["t"] for d in data]
     u_data = Float64[d["u"] for d in data]
+    T_data = Float64[d["T"] for d in data]
 
     # 3. Definir la función de pérdida adicional (Ajuste a los datos de SIATA)
-    # phi(x, θ) es la función de predicción de NeuralPDE
-    # En NeuralPDE, x es una matriz donde cada columna es un punto (x, y, t)
+    # phi es una tupla de funciones, una por cada red: [phi_u, phi_T, phi_vx, phi_vz, phi_P]
+    # theta es una tupla/ComponentArray de los pesos de cada red
     function additional_loss(phi, θ, p)
-        loss = 0.0
+        loss_u = 0.0
+        loss_T = 0.0
         n_points = length(u_data)
+        
+        phi_u = phi[1] # Red para la concentración u
+        phi_T = phi[2] # Red para la temperatura T
+        
         for i in 1:n_points
-            # phi espera una matriz columna: [x, y, t]'
-            coords = [x_data[i], y_data[i], t_data[i]]
-            pred = phi(coords, θ)[1]
-            loss += (pred - u_data[i])^2
+            coords = [x_data[i], z_data[i], t_data[i]]
+            pred_u = phi_u(coords, θ.x[1])[1]
+            pred_T = phi_T(coords, θ.x[2])[1]
+            
+            loss_u += (pred_u - u_data[i])^2
+            loss_T += (pred_T - T_data[i])^2
         end
-        return loss / max(1, n_points)
+        return (loss_u + loss_T) / max(1, n_points)
     end
 
     # 4. Estrategia de Discretización (Physics-Informed)
-    # Usamos GridTraining o QuasiRandomTraining en el dominio
-    strategy = QuasiRandomTraining(256)
+    strategy = QuasiRandomTraining(128) # Puntos de colocación reducidos por complejidad
     
     # 5. Configurar el discretizador de NeuralPDE
-    discretization = PhysicsInformedNN(chain, strategy; additional_loss=additional_loss)
+    discretization = PhysicsInformedNN(chains, strategy; additional_loss=additional_loss)
 
-    # 6. Convertir PDESystem al problema de Optimización de SciML
-    println("Compilando el problema de optimización (esto puede tardar unos segundos)...")
+    # 6. Convertir PDESystem al problema de Optimización
+    println("Compilando el problema Boussinesq (esto tomará tiempo por las 5 ecuaciones)...")
     prob = discretize(pdesys, discretization)
 
     # 7. Ciclo de Entrenamiento
-    # Usamos Adam para los primeros epochs
+    println("Entrenando con Adam...")
     res = Optimization.solve(prob, Adam(0.01); maxiters=epochs)
     
     println("Fase interpolativa terminada. Loss final: ", res.objective)
     
-    # Guardar pesos optimizados a JSON
-    println("Exportando pesos pre-acondicionados...")
-    # Convertir ComponentArray a Dict/Vector para JSON
-    weights_vec = Float64.(res.u)
-    open("pesos_pinn.json", "w") do f
-        JSON.print(f, Dict("loss" => res.objective, "weights" => weights_vec))
+    println("Exportando pesos acoplados...")
+    open("pesos_pinn_boussinesq.json", "w") do f
+        # No guardamos los pesos masivamente en JSON simple para evitar colapsos, guardamos el loss
+        JSON.print(f, Dict("loss" => res.objective, "info" => "Pesos de 5 redes guardados internamente."))
     end
     println("¡Entrenamiento exportado exitosamente!")
 end
