@@ -79,14 +79,22 @@ if __name__ == "__main__":
     domain = AburraDomain()
     mapper = DomainMapGenerator(domain.get_spatial_bounds())
     
-    mock_stations = [
-        {'id': 'C-001', 'latitud': 6.2518, 'longitud': -75.5636, 'pm25': 25}, # Centro (Verde)
-        {'id': 'C-002', 'latitud': 6.1500, 'longitud': -75.6000, 'pm25': 45}, # Sur (Naranja)
-        {'id': 'C-003', 'latitud': 6.3000, 'longitud': -75.5000, 'pm25': 60}, # Norte (Rojo)
-        {'id': 'C-004', 'latitud': 5.0000, 'longitud': -74.0000, 'pm25': 10}, # Fuera (Debe ignorarse si se filtra antes)
-    ]
+    import json
+    import os
+    
+    if os.path.exists("datos_siata_temporal.json"):
+        print("Cargando datos extendidos desde datos_siata_temporal.json...")
+        with open("datos_siata_temporal.json", "r", encoding="utf-8") as f:
+            mock_stations = json.load(f)
+    else:
+        mock_stations = [
+            {'id': 'C-001', 'latitud': 6.2518, 'longitud': -75.5636, 'pm25': 25},
+            {'id': 'C-002', 'latitud': 6.1500, 'longitud': -75.6000, 'pm25': 45},
+            {'id': 'C-003', 'latitud': 6.3000, 'longitud': -75.5000, 'pm25': 60},
+            {'id': 'C-004', 'latitud': 5.0000, 'longitud': -74.0000, 'pm25': 10},
+        ]
     
     valid_stations = domain.filter_stations(mock_stations)
     mapper.plot_stations(valid_stations)
     mapper.save_map("mapa_validacion.html")
-    print("Se ha generado 'mapa_validacion.html' con éxito.")
+    print(f"Se ha generado 'mapa_validacion.html' con éxito mostrando {len(valid_stations)} sensores.")

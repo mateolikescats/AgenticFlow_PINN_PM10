@@ -24,8 +24,22 @@ function load_data(filepath)
     return JSON.parsefile(filepath)
 end
 
-function train_interpolative(data_path="datos_siata.json", epochs=100)
+function train_interpolative(data_path="datos_siata_temporal.json")
     println("==== Iniciando Fase Interpolativa PINN Termodinámica ====")
+    
+    # Leer hiperparámetros si existen (inyectados por el Agente Python)
+    epochs = 100
+    learning_rate = 0.01
+    if isfile("pinn_config.json")
+        try
+            config = JSON.parsefile("pinn_config.json")
+            epochs = get(config, "epochs", 100)
+            learning_rate = get(config, "learning_rate", 0.01)
+            println("Configuración recibida del Agente: Epochs=$epochs, LR=$learning_rate")
+        catch
+            println("Error leyendo pinn_config.json, usando valores por defecto.")
+        end
+    end
     
     # 1. Obtener la ecuación Boussinesq y arquitecturas (5 redes)
     pdesys, (x, z, t, u, T, vx, vz, P) = get_boussinesq_pde_system()
@@ -72,8 +86,8 @@ function train_interpolative(data_path="datos_siata.json", epochs=100)
     prob = discretize(pdesys, discretization)
 
     # 7. Ciclo de Entrenamiento
-    println("Entrenando con Adam...")
-    res = Optimization.solve(prob, Adam(0.01); maxiters=epochs)
+    println("Entrenando con Adam (LR=$learning_rate)...")
+    res = Optimization.solve(prob, Adam(learning_rate); maxiters=epochs)
     
     println("Fase interpolativa terminada. Loss final: ", res.objective)
     

@@ -5,3 +5,6 @@ shapely
 folium
 scikit-learn
 pytest
+crewai
+langchain-google-genai
+pydantic

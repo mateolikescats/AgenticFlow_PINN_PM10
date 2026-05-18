@@ -32,12 +32,12 @@ El proyecto se está desarrollando de forma iterativa y "hueso a hueso" para gar
 - **Flotabilidad y Estratificación**: La velocidad vertical del viento ($v_z$) está directamente acoplada al gradiente de temperatura ($T$) mediante el término de flotabilidad $\beta g (T - T_{ref})$, modelando matemáticamente la inversión térmica y acumulación de partículas en la capa límite.
 - **Redes Neuronales Múltiples**: 5 arquitecturas MLP separadas en `Lux.jl` para predecir $[u, T, v_x, v_z, P]$ evitando colapso de gradientes entre dominios físicos dispares.
 
-### ⏳ Fase 3: Arquitectura Agéntica (CrewAI)
-**Estado:** `En Planificación`
-Desarrollo de un ecosistema de agentes LLM que disocian el razonamiento semántico del cómputo numérico:
-- **Physics Architect:** Configura los límites del dominio y asimila los datos satelitales/terrestres.
-- **Reaction Validator:** Verifica que las tasas de decaimiento termodinámicas sean científicamente plausibles.
-- **Source Identification (Forense):** Cruza las coordenadas descubiertas por la PINN con bases de datos (OpenStreetMap) para atribuir responsabilidad industrial o de tráfico.
+### ✅ Fase 3: Arquitectura Agéntica (CrewAI)
+**Estado:** `Completado (Esqueleto y Tools)`
+Desarrollo de un ecosistema de agentes LLM orquestado por **Gemini 1.5 Pro**, diseñado para aislar el razonamiento del cómputo numérico puro:
+- **Physics Architect:** Controla el ciclo de entrenamiento. Usa un *CLI-Bridge Tool* (`ExecuteJuliaPINNTool`) para lanzar `train_interpolative.jl` y ajusta los hiperparámetros (Adam/Epochs) según los logs de *Loss* en tiempo real.
+- **Reaction Validator:** Verifica que los resultados no violen las leyes de la termodinámica.
+- **Source Forensic Investigator:** Emplea algoritmos de agrupamiento como **Gaussian Mixture Models (GMM)** y **ST-DBSCAN** a través de `SpatiotemporalClusteringTool` para separar las nubes dinámicas de contaminación en el tiempo y el espacio, asignando probabilidades a las fuentes originarias.
 
 ---
 
