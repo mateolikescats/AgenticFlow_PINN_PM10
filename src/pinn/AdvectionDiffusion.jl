@@ -2,6 +2,7 @@ module AdvectionDiffusion
 
 using ModelingToolkit
 using Lux
+using DomainSets
 
 export get_boussinesq_pde_system, build_multi_pinn
 
@@ -61,9 +62,9 @@ function get_boussinesq_pde_system()
     # Dominio adimensional del corte transversal del valle
     # x en [-1, 1] son las laderas, z en [0, 1] es la altitud de la capa límite.
     domains = [
-        x ∈ ModelingToolkit.Interval(-1.0, 1.0),
-        z ∈ ModelingToolkit.Interval(0.0, 1.0),
-        t ∈ ModelingToolkit.Interval(0.0, 1.0)
+        x ∈ DomainSets.ClosedInterval(-1.0, 1.0),
+        z ∈ DomainSets.ClosedInterval(0.0, 1.0),
+        t ∈ DomainSets.ClosedInterval(0.0, 1.0)
     ]
     
     # Condiciones de frontera topológicas (Hard constraints)

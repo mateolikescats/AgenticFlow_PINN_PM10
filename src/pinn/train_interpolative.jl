@@ -1,3 +1,6 @@
+using Pkg
+Pkg.activate(".")
+
 include("AdvectionDiffusion.jl")
 using .AdvectionDiffusion
 
@@ -66,8 +69,8 @@ function train_interpolative(data_path="datos_siata_temporal.json")
         
         for i in 1:n_points
             coords = [x_data[i], z_data[i], t_data[i]]
-            pred_u = phi_u(coords, θ.x[1])[1]
-            pred_T = phi_T(coords, θ.x[2])[1]
+            pred_u = phi_u(coords, θ.depvar.u)[1]
+            pred_T = phi_T(coords, θ.depvar.T)[1]
             
             loss_u += (pred_u - u_data[i])^2
             loss_T += (pred_T - T_data[i])^2
@@ -87,7 +90,7 @@ function train_interpolative(data_path="datos_siata_temporal.json")
 
     # 7. Ciclo de Entrenamiento
     println("Entrenando con Adam (LR=$learning_rate)...")
-    res = Optimization.solve(prob, Adam(learning_rate); maxiters=epochs)
+    res = Optimization.solve(prob, OptimizationOptimisers.Adam(learning_rate); maxiters=epochs)
     
     println("Fase interpolativa terminada. Loss final: ", res.objective)
     

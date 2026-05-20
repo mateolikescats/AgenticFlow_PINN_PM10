@@ -39,6 +39,22 @@ Desarrollo de un ecosistema de agentes LLM orquestado por **Gemini 1.5 Pro**, di
 - **Reaction Validator:** Verifica que los resultados no violen las leyes de la termodinámica.
 - **Source Forensic Investigator:** Emplea algoritmos de agrupamiento como **Gaussian Mixture Models (GMM)** y **ST-DBSCAN** a través de `SpatiotemporalClusteringTool` para separar las nubes dinámicas de contaminación en el tiempo y el espacio, asignando probabilidades a las fuentes originarias.
 
+## 🔄 Pipeline Completo de Integración (Visión a Futuro)
+
+Para consolidar el desarrollo en una arquitectura verdaderamente autónoma e interconectada, se desarrollará el siguiente ciclo (Pipeline) de ejecución end-to-End:
+
+1. **Adquisición Dinámica (Agente + Sensor)**:
+   - Python inicia el ciclo. El agente extrae los datos geográficos de SIATA o usa el dataset temporal (generado por `scratch_siata.py`).
+2. **Inyección en Julia (CLI-Bridge)**:
+   - El *Physics Architect Agent* escribe un archivo `pinn_config.json` con los hiperparámetros óptimos y lanza un subproceso de sistema llamando al motor `NeuralPDE` de Julia (`train_interpolative.jl`).
+3. **Entrenamiento Físico (Curriculum Learning Autonómo)**:
+   - Julia carga las 5 redes acopladas y empieza a optimizar. Mientras entrena, imprime su error a la salida estándar (`stdout`).
+   - El Agente de Python está *escuchando* esta salida. Si detecta un colapso del gradiente (`NaN`) o un estancamiento en un mínimo local, detiene el proceso de Julia, razona lógicamente, y lo reinicia ajustando el *Learning Rate*.
+4. **Fase Inversa y Extracción de Coordenadas**:
+   - Una vez Julia consolida el campo de advección, se pasa a la resolución Inversa. Julia descubre la Función Fuente $S(x, z)$ y exporta las coordenadas de máxima emisión.
+5. **Clustering y Atribución Final**:
+   - El *Forensic Investigator Agent* aplica *Gaussian Mixture Models (GMM)* sobre las coordenadas descubiertas por Julia para modelarlas como nubes y cruzarlas con mapas estáticos (OpenStreetMap) atribuyendo, sin intervención humana, la culpa de la contaminación a corredores industriales o vías altamente congestionadas.
+
 ---
 
 ## ⚙️ Instalación y Uso
@@ -48,7 +64,18 @@ El proyecto opera bajo un ecosistema dual (Python para orquestación de datos/ag
 ### 1. Entorno de Python (Datos y Agentes)
 ```bash
 python -m venv .venv
-source .venv/bin/activate  # En Windows: .venv\Scripts\activate
+source .venv/bin/activate  # En Linux/Mac
+.venv\Scripts\activate     # En Windows (Cmd)
+```
+
+> **Nota para usuarios de Windows (PowerShell):**
+> Si recibe el error `UnauthorizedAccess` o "la ejecución de scripts está deshabilitada", ejecute el siguiente comando una sola vez como Administrador o para su usuario:
+> ```powershell
+> Set-ExecutionPolicy Unrestricted -Scope CurrentUser
+> ```
+> Y vuelva a intentar activar el entorno.
+
+```bash
 pip install -r requirements.txt
 ```
 
