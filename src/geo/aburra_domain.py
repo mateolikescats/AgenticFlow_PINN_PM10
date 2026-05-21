@@ -5,12 +5,15 @@ logger = logging.getLogger(__name__)
 
 class AburraDomain:
     """
-    Define el dominio geográfico \Omega para la ecuación ADR de la PINN.
+    Define el dominio geográfico Omega para la ecuación ADR de la PINN.
     El Valle de Aburrá está geográficamente restringido. Esta clase asegura
     que las coordenadas utilizadas para el entrenamiento pertenezcan estrictamente
     al dominio físico, mitigando el problema de 'ill-posedness' por datos fuera
     de la topología (\\Omega).
     """
+
+    #? Básicamente con esto se restringe el dominio geográfico a un área específica, evitando que el modelo aprenda patrones de datos que no corresponden al área de interés. 
+    #? Esto es crucial para garantizar que el modelo se enfoque en aprender la dinámica de la contaminación del aire dentro del Valle de Aburrá, y no en áreas circundantes que podrían tener características muy diferentes. 
     
     def __init__(self):
         # Bounding box aproximado del Valle de Aburrá (Caldas a Barbosa)
@@ -22,6 +25,8 @@ class AburraDomain:
         
         # Representación geométrica en R^2
         self.bbox = box(self.min_lon, self.min_lat, self.max_lon, self.max_lat)
+        #? La función box de Shapely crea un polígono rectangular definido por las coordenadas mínimas y máximas de longitud y latitud. 
+        #? Esto permite realizar operaciones geométricas como verificar si un punto está dentro del área definida por el bounding box.
 
     def is_inside(self, lat: float, lon: float) -> bool:
         """
