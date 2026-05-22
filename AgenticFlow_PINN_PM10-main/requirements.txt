@@ -1,0 +1,10 @@
+pandas
+requests
+geopandas
+shapely
+folium
+scikit-learn
+pytest
+crewai
+langchain-google-genai
+pydantic
