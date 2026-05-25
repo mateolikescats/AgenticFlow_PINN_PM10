@@ -25,7 +25,5 @@ init_julia.jl
 
 # Api
 
-.env/ 
-
 .env
 
