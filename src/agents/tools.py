@@ -95,3 +95,69 @@ class SpatiotemporalClusteringTool(BaseTool):
             return report
         except Exception as e:
             return f"Error en clustering: {str(e)}"
+
+# --- New Tool for Geospatial Valle Query ---
+class GeospatialValleQueryInput(BaseModel):
+    x_coordinate: float = Field(..., description="Coordenada x adimensionalizada del Valle (-1.0 a 1.0) a interrogar.")
+
+class GeospatialValleQueryTool(BaseTool):
+    name: str = "Geospatial Valle Query Tool"
+    description: str = "Resuelve y cruza una coordenada adimensional x (-1.0 a 1.0) con puntos geográficos reales del Valle de Aburrá."
+    args_schema: Type[BaseModel] = GeospatialValleQueryInput
+    
+    def _run(self, x_coordinate: float) -> str:
+        x = x_coordinate
+        if x < -1.0 or x > 1.0:
+            return f"Coordenada x = {x} fuera del dominio [-1.0, 1.0]"
+            
+        if -1.0 <= x < -0.6:
+            return (
+                f"Coordenada x = {x:.2f} corresponde a la Ladera Occidental de Medellín (San Javier y Belén). "
+                "Área residencial con topografía empinada, con alta vulnerabilidad a la acumulación de contaminantes "
+                "cuando la altura de mezcla desciende y se bloquea la ventilación transversal."
+            )
+        elif -0.6 <= x < -0.2:
+            return (
+                f"Coordenada x = {x:.2f} corresponde al Corredor Industrial del Sur (Sabaneta y La Estrella). "
+                "Zona caracterizada por una concentración densa de fábricas pesadas, fundidoras de metales y "
+                "plantas de asfalto, representando una de las fuentes estacionarias más potentes en el cañón."
+            )
+        elif -0.2 <= x < 0.2:
+            return (
+                f"Coordenada x = {x:.2f} corresponde al Fondo del Cañón / Centro de Medellín. "
+                "Zona comercial de alta congestión. Cruzada por la Autopista Norte e importantes avenidas. "
+                "Es el punto crítico de emisiones vehiculares móviles (transporte público y camiones de carga de diésel)."
+            )
+        elif 0.2 <= x < 0.6:
+            return (
+                f"Coordenada x = {x:.2f} corresponde al Corredor Industrial del Norte / Zona de Itagüí. "
+                "Concentración masiva de industrias de manufactura, textileras y plantas de procesamiento. "
+                "Registra niveles elevados y constantes de emisiones industriales basales."
+            )
+        else: # 0.6 <= x <= 1.0
+            return (
+                f"Coordenada x = {x:.2f} corresponde a la Ladera Oriental de Medellín (Manrique y Villa Hermosa). "
+                "Ladera residencial asimétrica con relieve empinado. Registra bajas emisiones locales, pero una "
+                "alta susceptibilidad al estancamiento de partículas debido al flujo ascendente de laderas (vientos anabáticos)."
+            )
+
+# --- New Tool for Writing Standalone LaTeX Forensic Report ---
+class WriteLatexForensicReportInput(BaseModel):
+    report_content: str = Field(..., description="Contenido completo en código LaTeX del reporte forense standalone.")
+
+class WriteLatexForensicReportTool(BaseTool):
+    name: str = "Write Latex Forensic Report Tool"
+    description: str = "Crea y guarda el reporte forense standalone final en formato LaTeX en la ruta reporte/reporte_forense.tex."
+    args_schema: Type[BaseModel] = WriteLatexForensicReportInput
+    
+    def _run(self, report_content: str) -> str:
+        report_dir = "reporte"
+        os.makedirs(report_dir, exist_ok=True)
+        report_path = os.path.join(report_dir, "reporte_forense.tex")
+        
+        try:
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write(report_content)
+            return f"✅ Reporte forense standalone en LaTeX guardado exitosamente en: {report_path}"
+        except Exception as e:
+            return f"❌ Error guardando el reporte en LaTeX: {str(e)}"

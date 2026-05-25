@@ -33,12 +33,14 @@ function train_interpolative(data_path="datos_siata_temporal.json")
     # Leer hiperparámetros si existen (inyectados por el Agente Python)
     epochs = 100
     learning_rate = 0.01
+    lbfgs_iters = 300
     if isfile("pinn_config.json")
         try
             config = JSON.parsefile("pinn_config.json")
             epochs = get(config, "epochs", 100)
             learning_rate = get(config, "learning_rate", 0.01)
-            println("Configuración recibida del Agente: Epochs=$epochs, LR=$learning_rate")
+            lbfgs_iters = get(config, "lbfgs_iters", 300)
+            println("Configuración recibida del Agente: Epochs=$epochs, LR=$learning_rate, L-BFGS-Iters=$lbfgs_iters")
         catch
             println("Error leyendo pinn_config.json, usando valores por defecto.")
         end
@@ -96,7 +98,7 @@ function train_interpolative(data_path="datos_siata_temporal.json")
     # Fase 2: Refinamiento de precisión con L-BFGS (Optimizador de segundo orden)
     println("Fase 2: Refinando con L-BFGS...")
     prob2 = Optimization.remake(prob, u0=res1.u)
-    res2 = Optimization.solve(prob2, OptimizationOptimJL.LBFGS(); maxiters=100)
+    res2 = Optimization.solve(prob2, OptimizationOptimJL.LBFGS(); maxiters=lbfgs_iters)
     println("Fase 2 terminada. Loss final L-BFGS: ", res2.objective)
     
     println("Exportando pesos acoplados...")

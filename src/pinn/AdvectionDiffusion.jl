@@ -45,11 +45,11 @@ function get_boussinesq_pde_system()
     
     # 2. Momentum en X (Canalización transversal con penalización Brinkman)
     eq_mom_x = Dt(vx(x,z,t)) + vx(x,z,t)*Dx(vx(x,z,t)) + vz(x,z,t)*Dz(vx(x,z,t)) ~ 
-               -Dx(P(x,z,t)) + nu * (Dxx(vx(x,z,t)) + Dzz(vx(x,z,t))) - (chi / 1e-4) * vx(x,z,t)
+               -Dx(P(x,z,t)) + nu * (Dxx(vx(x,z,t)) + Dzz(vx(x,z,t))) - (chi / 2e-3) * vx(x,z,t)
                
     # 3. Momentum en Z (Estratificación, aproximación de Boussinesq y penalización Brinkman)
     eq_mom_z = Dt(vz(x,z,t)) + vx(x,z,t)*Dx(vz(x,z,t)) + vz(x,z,t)*Dz(vz(x,z,t)) ~ 
-               -Dz(P(x,z,t)) + nu * (Dxx(vz(x,z,t)) + Dzz(vz(x,z,t))) + beta_g * (T(x,z,t) - T_ref) - (chi / 1e-4) * vz(x,z,t)
+               -Dz(P(x,z,t)) + nu * (Dxx(vz(x,z,t)) + Dzz(vz(x,z,t))) + beta_g * (T(x,z,t) - T_ref) - (chi / 2e-3) * vz(x,z,t)
                
     # 4. Transporte de Calor (Radiación / Termodinámica)
     eq_energy = Dt(T(x,z,t)) + vx(x,z,t)*Dx(T(x,z,t)) + vz(x,z,t)*Dz(T(x,z,t)) ~ 
@@ -57,7 +57,7 @@ function get_boussinesq_pde_system()
                 
     # 5. Advección-Difusión de Contaminantes (PM2.5 / PM10 con penalización Brinkman en subsuelo)
     eq_transport = Dt(u(x,z,t)) + vx(x,z,t)*Dx(u(x,z,t)) + vz(x,z,t)*Dz(u(x,z,t)) ~ 
-                   D * (Dxx(u(x,z,t)) + Dzz(u(x,z,t))) + S(x,z,t) - (chi / 1e-4) * u(x,z,t)
+                   D * (Dxx(u(x,z,t)) + Dzz(u(x,z,t))) + S(x,z,t) - (chi / 2e-3) * u(x,z,t)
     
     eqs = [eq_mass, eq_mom_x, eq_mom_z, eq_energy, eq_transport]
     
@@ -134,14 +134,28 @@ function QMC.sample(n::Integer, d::Integer, S::ImportanceSampler, T::Type)
     base_samples = QMC.sample(n, d, QMC.LatinHypercubeSample(), T)
     if d == 3 # Espacio-tiempo de las PDEs: [x, z, t]
         for i in 1:n
+            # 1. Recuperar coordenada x en espacio físico [-1, 1] para calcular relieve
+            x_phys = 2.0 * base_samples[1, i] - 1.0
+            h_x = 0.4 * x_phys^2
+            
+            # 2. Aplicar muestreo de importancia bimodal vertical
             z_uni = base_samples[2, i]
             if rand() < 0.5
-                # Sesgo hacia el suelo (z ≈ 0): concentrar en las emisiones y sensores
+                # Sesgo hacia el suelo (z ≈ 0)
                 z_new = z_uni^3.0
             else
-                # Sesgo hacia la inversión térmica (z ≈ 0.5): concentrar en la capa límite estable
+                # Sesgo hacia la inversión térmica (z ≈ 0.5)
                 z_new = 0.5 + 4.0 * (z_uni - 0.5)^3.0
             end
+            
+            # 3. Enmascaramiento de colocación (Estrategia 3):
+            # Si el punto cae en el subsuelo profundo (z < h(x) - 0.05),
+            # lo proyectamos a la zona activa [h(x) - 0.05, 1.0]
+            cutoff = h_x - 0.05
+            if z_new < cutoff
+                z_new = cutoff + z_uni * (1.0 - cutoff)
+            end
+            
             base_samples[2, i] = clamp(z_new, 0.0, 1.0)
         end
     end

@@ -1,6 +1,6 @@
 import os
 from crewai import Agent, Task, Crew, Process, LLM
-from tools import ExecuteJuliaPINNTool, SpatiotemporalClusteringTool
+from tools import SpatiotemporalClusteringTool, GeospatialValleQueryTool, WriteLatexForensicReportTool
 
 # Cargar variables de entorno desde un archivo .env si existe
 if os.path.exists(".env"):
@@ -11,7 +11,6 @@ if os.path.exists(".env"):
                 os.environ[key.strip()] = value.strip()
 
 # 1. Configurar el LLM: Gemini 3.5 Flash
-# Se requiere que el usuario haya seteado la variable de entorno GEMINI_API_KEY
 llm = LLM(
     model="gemini/gemini-3.5-flash",
     temperature=0.3,
@@ -19,98 +18,119 @@ llm = LLM(
 )
 
 # 2. Definición de Agentes
-physics_architect = Agent(
-    role="Physics Architect & Computacional Fluid Dynamics Expert",
-    goal="Configurar y entrenar el modelo numérico de PINN para resolver la Ecuación de Boussinesq de dispersión de PM2.5.",
+reaction_validator = Agent(
+    role="Thermodynamics Validator",
+    goal="Validar que los campos físicos de velocidad y temperatura de la PINN sean físicamente consistentes.",
     backstory=(
-        "Eres un experto en simulación matemática y dinámica de fluidos en valles. "
-        "Comprendes cómo las inversiones térmicas atrapan las partículas. "
-        "Tu misión es usar tus herramientas para ejecutar el motor numérico en Julia "
-        "y evaluar los hiperparámetros (learning_rate y epochs) hasta asegurar la convergencia."
+        "Eres un analista termodinámico exigente. "
+        "Revisas que la inversión térmica atrapante funcione físicamente. "
+        "Confirmas que el gradiente vertical térmico impida la turbulencia vertical y suprimas corrientes ascendentes."
     ),
     verbose=True,
     allow_delegation=False,
-    tools=[ExecuteJuliaPINNTool()],
-    llm=llm
-)
-
-reaction_validator = Agent(
-    role="Thermodynamics Validator",
-    goal="Verificar que los resultados numéricos no violen las leyes de la termodinámica para la inversión térmica.",
-    backstory=(
-        "Eres un analista termodinámico exigente. "
-        "Revisas los registros del modelo físico. Sabes que si la inversión térmica "
-        "ocurre, el aire frío debe estar abajo y atrapar el PM2.5. Validarás el razonamiento del Architect."
-    ),
-    verbose=True,
-    allow_delegation=True,
     llm=llm
 )
 
 forensic_investigator = Agent(
     role="Source Forensic Investigator",
-    goal="Atribuir la contaminación a fuentes específicas mediante clustering espaciotemporal.",
+    goal="Atribuir focos de emisión a industrias y tráfico mediante clustering y cruces geoespaciales en el Valle de Aburrá.",
     backstory=(
-        "Eres un detective medioambiental. Usas algoritmos de Machine Learning (como GMM) "
-        "para rastrear las nubes móviles de contaminación en el espacio y en el tiempo, "
-        "descubriendo cómo se unen o separan."
+        "Eres un detective ambiental y experto en geomática. "
+        "Utilizas herramientas de clustering GMM para identificar nubes de contaminación y "
+        "luego consultas bases de datos geoespaciales del Valle de Aburrá para cruzar las coordenadas "
+        "matemáticas con autopistas de alto tráfico o zonas industriales pesadas específicas."
     ),
     verbose=True,
     allow_delegation=False,
-    tools=[SpatiotemporalClusteringTool()],
+    tools=[SpatiotemporalClusteringTool(), GeospatialValleQueryTool()],
+    llm=llm
+)
+
+policy_advisor = Agent(
+    role="Environmental Policy Advisor",
+    goal="Generar alertas tempranas y políticas dinámicas basadas en la severidad de la inversión y la ubicación de las emisiones.",
+    backstory=(
+        "Eres un consultor de política ambiental y salud pública de Medellín. "
+        "Lees los reportes forenses y las consistencias físicas, y formulas directrices estrictas de emergencia "
+        "(restricciones vehiculares como Pico y Placa ambiental, regulaciones de chimeneas o teletrabajo zonal)."
+    ),
+    verbose=True,
+    allow_delegation=False,
+    llm=llm
+)
+
+latex_reporter = Agent(
+    role="LaTeX Forensic Reporter",
+    goal="Consolidar todos los reportes agénticos en un documento standalone reporte_forense.tex de calidad de publicación.",
+    backstory=(
+        "Eres un diseñador editorial y redactor científico experto en LaTeX. "
+        "Compilas las secciones escritas por los otros tres expertos en un reporte estructurado y elegante "
+        "con tablas de métricas físicas, atribuciones espaciales y planes reguladores dinámicos."
+    ),
+    verbose=True,
+    allow_delegation=False,
+    tools=[WriteLatexForensicReportTool()],
     llm=llm
 )
 
 # 3. Definición de Tareas (Tasks)
-task_train_pinn = Task(
-    description=(
-        "1. Usa la 'Execute Julia PINN Tool' con epochs=50 y learning_rate=0.01.\n"
-        "2. Lee los logs de compilación devueltos. \n"
-        "3. Si el Loss final es muy alto (>0.5), vuelve a correr la herramienta "
-        "con learning_rate más bajo o más epochs.\n"
-        "4. Genera un reporte sobre la convergencia y entregalo."
-    ),
-    expected_output="Un reporte detallado del proceso de convergencia de la red neuronal en Julia, incluyendo el Loss final.",
-    agent=physics_architect
-)
-
 task_validate_thermodynamics = Task(
     description=(
-        "1. Revisa el reporte de convergencia entregado por el Physics Architect.\n"
-        "2. Comprueba lógicamente si el modelo parece estable y apto para ser usado "
-        "en las atribuciones de PM2.5.\n"
-        "3. Escribe un visto bueno termodinámico o solicita re-entrenamiento."
+        "1. Analiza los resultados del entrenamiento físico de la iPINN en laderas parabólicas. \n"
+        "2. Evalúa si la estratificación por inversión térmica es estable (gradiente vertical positivo de temperatura) "
+        "y si la velocidad vertical está correctamente atenuada cerca de las laderas sólidas.\n"
+        "3. Emite un dictamen termodinámico formal de la simulación física."
     ),
-    expected_output="Un reporte de validación termodinámica (Pass/Fail) con justificación física.",
+    expected_output="Un dictamen termodinámico formal detallando la estabilidad física y el confinamiento de contaminantes.",
     agent=reaction_validator
 )
 
 task_clustering_attribution = Task(
     description=(
-        "1. Usa la 'Spatiotemporal GMM Clustering Tool' indicando buscar 2 componentes (nubes).\n"
-        "2. Analiza el reporte de cúmulos devuelto por la herramienta.\n"
-        "3. Combina este análisis con el reporte de validación termodinámica.\n"
-        "4. Elabora el informe forense final que asigne la posible procedencia "
-        "de las nubes de PM2.5 a fuentes específicas."
+        "1. Ejecuta la 'Spatiotemporal GMM Clustering Tool' para encontrar 2 cúmulos principales de contaminación.\n"
+        "2. Identifica los centros espaciotemporales de los cúmulos.\n"
+        "3. Usa la 'Geospatial Valle Query Tool' con las coordenadas aproximadas de los cúmulos "
+        "para mapear las áreas matemáticas a zonas geográficas e infraestructuras reales del Valle de Aburrá.\n"
+        "4. Genera la atribución de fuentes detallada en un informe descriptivo de los centros de emisión."
     ),
-    expected_output="Un informe forense de 3 párrafos atribuyendo la contaminación del Valle de Aburrá a cúmulos dinámicos específicos.",
+    expected_output="Un reporte forense espacial atribuyendo las nubes de PM2.5 detectadas por el GMM a puntos y zonas reales del Valle.",
     agent=forensic_investigator
+)
+
+task_policy_advice = Task(
+    description=(
+        "1. Lee el dictamen termodinámico y el informe de atribución geoespacial.\n"
+        "2. Diseña un plan dinámico de políticas ambientales adaptativas en el Valle de Aburrá.\n"
+        "3. Propón restricciones específicas basadas en los cúmulos activos (ej. restricciones industriales zonales o restricciones de transporte público de carga) "
+        "y el estado estable de la inversión térmica."
+    ),
+    expected_output="Un plan regulatorio y plan de acción de 3 puntos detallado y justificado para las contingencias del Valle de Aburrá.",
+    agent=policy_advisor
+)
+
+task_generate_latex_report = Task(
+    description=(
+        "1. Recopila el dictamen termodinámico, el informe forense geoespacial y el plan de políticas de los otros agentes.\n"
+        "2. Diseña y redacta un reporte standalone completo en código LaTeX, que incluya:\\documentclass, \\begin{document}, "
+        "un título formal de 'Reporte Forense Ambiental y Atribución Atmosférica', y secciones estructuradas.\n"
+        "3. Usa la 'Write Latex Forensic Report Tool' para escribir el código LaTeX resultante en 'reporte/reporte_forense.tex'."
+    ),
+    expected_output="Un mensaje de éxito confirmando la escritura del reporte forense en LaTeX.",
+    agent=latex_reporter
 )
 
 # 4. Ensamblar la Tripulación (Crew)
 aburra_crew = Crew(
-    agents=[physics_architect, reaction_validator, forensic_investigator],
-    tasks=[task_train_pinn, task_validate_thermodynamics, task_clustering_attribution],
+    agents=[reaction_validator, forensic_investigator, policy_advisor, latex_reporter],
+    tasks=[task_validate_thermodynamics, task_clustering_attribution, task_policy_advice, task_generate_latex_report],
     process=Process.sequential,
     verbose=True
 )
 
 if __name__ == "__main__":
-    print("Iniciando orquestación Multi-Agente con Gemini 1.5 Pro...")
-    # Requiere GEMINI_API_KEY en el entorno
+    print("Iniciando orquestación Multi-Agente de Intérpretes Forenses...")
     if not os.environ.get("GEMINI_API_KEY"):
         print("ERROR: La variable de entorno GEMINI_API_KEY no está configurada.")
-        print("Por favor, configúrala antes de ejecutar este script.")
         exit(1)
         
     result = aburra_crew.kickoff()
