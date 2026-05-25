@@ -44,8 +44,8 @@ function train_interpolative(data_path="datos_siata_temporal.json")
         end
     end
     
-    # 1. Obtener la ecuación Boussinesq y arquitecturas (5 redes)
-    pdesys, (x, z, t, u, T, vx, vz, P) = get_boussinesq_pde_system()
+    # 1. Obtener la ecuación Boussinesq y arquitecturas (6 redes)
+    pdesys, (x, z, t, u, T, vx, vz, P, S) = get_boussinesq_pde_system()
     chains = build_multi_pinn()
     
     # 2. Cargar datos empíricos
@@ -57,7 +57,7 @@ function train_interpolative(data_path="datos_siata_temporal.json")
     T_data = Float64[d["T"] for d in data]
 
     # 3. Definir la función de pérdida adicional (Ajuste a los datos de SIATA)
-    # phi es una tupla de funciones, una por cada red: [phi_u, phi_T, phi_vx, phi_vz, phi_P]
+    # phi es una tupla de funciones, una por cada red: [phi_u, phi_T, phi_vx, phi_vz, phi_P, phi_S]
     # theta es una tupla/ComponentArray de los pesos de cada red
     function additional_loss(phi, θ, p)
         loss_u = 0.0

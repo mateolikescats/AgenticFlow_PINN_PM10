@@ -104,19 +104,18 @@ La optimización se reestructurará en dos etapas numéricas deterministas:
 \begin{table}[htbp]
 \centering
 \caption{Matriz Comparativa de Arquitectura y Resultados Físicos}
-\begin{tabularx}{\textwidth}{lXX} % 'X' estira la columna y auto-ajusta el texto
+\begin{tabular}{lcc}
 \toprule
-\textbf{Métrica de Evaluación} & \textbf{Línea Base (Actual)} & \textbf{Modelo iPINN Propuesto (Optimizado)} \\
+\textbf{Métrica de Evaluación} & \textbf{Línea Base (Antes)} & \textbf{iPINN Activa (Propuesta 1 - Actual)} \\
 \midrule
-Loss Total PINN & $0.454$ & \textit{Por evaluar} \\
-Estabilidad Termodinámica & Inestable ($N^2 \le 0$ local) & Estricta ($N^2 > 0$ global) \\
-Conservación de la Masa ($PM_{2.5}$) & No conservativo (fuga vertical) & Conservativo (flujo retenido) \\
-Modelo de Fuente $S(x, z, t)$ & Hardcodeado ($S = 0$) & Parametrizado Dinámico Inverso (iPINN) \\
-Discretización de Laderas & Caja Rectangular Plana & Cañón en Tazón mediante Mapeo Sigma \\
-Densidad de Colocación & Uniforme (Mapeo plano) & Importance Sampling (Gaussiano en base) \\
-Estrategia de Optimización & Adam (50 Épocas) & Híbrido Adam (300) + L-BFGS (Curvatura) \\
+Loss Total PINN & $0.454$ & $0.462$ (Estable con fuente acoplada) \\
+Conformidad Física (Flotabilidad) & Inestable ($N^2 \le 0$ local) & Parcial ($N^2 > 0$ inducido por softplus) \\
+Conservación de la Masa ($PM_{2.5}$) & No conservativo (fuga vertical) & Conservativo ($S \ge 0.0$ garantizado) \\
+Modelo de Fuente $S(x, z, t)$ & Fijo ($S = 0$) & Activo (6ª Red Lux + softplus) \\
+Resolución de Bordes (Laderas) & Caja Rectangular Plana & Caja Rectangular Plana (Base) \\
+Optimizador Utilizado & Adam (50 Épocas) & Adam (50 Épocas) \\
 \bottomrule
-\end{tabularx}
+\end{tabular}
 \end{table}
 
 \end{document}

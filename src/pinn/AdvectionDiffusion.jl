@@ -20,7 +20,7 @@ Se integra la Aproximación de Boussinesq para modelar la Inversión Térmica:
 """
 function get_boussinesq_pde_system()
     @parameters x z t
-    @variables u(..) T(..) vx(..) vz(..) P(..)
+    @variables u(..) T(..) vx(..) vz(..) P(..) S(..)
     
     Dt = Differential(t)
     Dx = Differential(x)
@@ -34,7 +34,6 @@ function get_boussinesq_pde_system()
     D = 0.01       # Difusividad del PM2.5
     beta_g = 1.0   # Gravedad * Coeficiente de expansión térmica (Adimensional)
     T_ref = 0.0    # Temperatura de referencia (ej. tope de la capa límite)
-    S = 0.0        # Término fuente interpolativo
     
     # 1. Conservación de Masa (Incompresible)
     eq_mass = Dx(vx(x,z,t)) + Dz(vz(x,z,t)) ~ 0.0
@@ -55,7 +54,7 @@ function get_boussinesq_pde_system()
                 
     # 5. Advección-Difusión de Contaminantes (PM2.5 / PM10)
     eq_transport = Dt(u(x,z,t)) + vx(x,z,t)*Dx(u(x,z,t)) + vz(x,z,t)*Dz(u(x,z,t)) ~ 
-                   D * (Dxx(u(x,z,t)) + Dzz(u(x,z,t))) + S
+                   D * (Dxx(u(x,z,t)) + Dzz(u(x,z,t))) + S(x,z,t)
     
     eqs = [eq_mass, eq_mom_x, eq_mom_z, eq_energy, eq_transport]
     
@@ -87,8 +86,8 @@ function get_boussinesq_pde_system()
         u(x, z, 0.0)  ~ 0.0
     ]
     
-    @named pdesys = PDESystem(eqs, bcs, domains, [x,z,t], [u(x,z,t), T(x,z,t), vx(x,z,t), vz(x,z,t), P(x,z,t)])
-    return pdesys, (x, z, t, u, T, vx, vz, P)
+    @named pdesys = PDESystem(eqs, bcs, domains, [x,z,t], [u(x,z,t), T(x,z,t), vx(x,z,t), vz(x,z,t), P(x,z,t), S(x,z,t)])
+    return pdesys, (x, z, t, u, T, vx, vz, P, S)
 end
 
 """
@@ -108,7 +107,15 @@ function build_multi_pinn()
         Lux.Dense(32, 1)
     )
     
-    return [make_net(), make_net(), make_net(), make_net(), make_net()]
+    # Red de emisión S con activación final softplus para garantizar S >= 0.0 (físicamente consistente)
+    net_s = Lux.Chain(
+        Lux.Dense(3, 32, Lux.tanh),
+        Lux.Dense(32, 32, Lux.tanh),
+        Lux.Dense(32, 32, Lux.tanh),
+        Lux.Dense(32, 1, Lux.softplus)
+    )
+    
+    return [make_net(), make_net(), make_net(), make_net(), make_net(), net_s]
 end
 
 end # module

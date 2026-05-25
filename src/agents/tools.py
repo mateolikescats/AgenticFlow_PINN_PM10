@@ -32,7 +32,7 @@ class ExecuteJuliaPINNTool(BaseTool):
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
-                timeout=300
+                timeout=600
             )
             
             # Recolectar salida
