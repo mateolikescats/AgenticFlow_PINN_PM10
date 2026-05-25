@@ -10,6 +10,7 @@
 \usepackage{xcolor}
 \usepackage{bookmark}
 \usepackage{tabularx}
+\usepackage{array}
 
 \geometry{top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
 
@@ -26,7 +27,7 @@
 
 \maketitle
 
-\section{Introducción y Acoplamiento Físico Atmosférico}
+\section*{Introducción y Acoplamiento Físico Atmosférico}
 El modelado de micro-meteorología urbana y dispersión de contaminantes en la compleja topografía del Valle de Aburrá se rige por un sistema acoplado bidimensional transversal vertical $(x, z, t)$, donde el eje $x$ representa el ancho del valle y el eje $z$ la altitud de la capa límite planetaria. Bajo la aproximación de Boussinesq para flujos incompresibles con estratificación térmica, el sistema de ecuaciones diferenciales parciales (PDEs) se formula como:
 
 \begin{align}
@@ -47,7 +48,7 @@ La cual actúa como una fuerza restauradora que suprime la turbulencia vertical 
 
 ---
 
-\section{Sección I: Resultados de la Línea Base (Antes de la Mejora)}
+\section*{Sección I: Resultados de la Línea Base (Antes de la Mejora)}
 En la fase inicial de desarrollo del proyecto (Línea Base), el modelo matemático y la arquitectura MLOps operaron bajo especificaciones simplistas y severas limitaciones estructurales que comprometieron la fidelidad física de la simulación.
 
 \subsection{Limitaciones de la Línea Base}
@@ -72,7 +73,7 @@ En la corrida real corregida en UTF-8, el Loss consolidado fue de  `0.454` . Con
 
 ---
 
-\section{Sección II: Propuestas de Optimización Atmosférica e iPINN Real}
+\section*{Sección II: Propuestas de Optimización Atmosférica e iPINN Real}
 Para transformar el proyecto en un modelo científico de vanguardia y resolver de manera irrefutable la localización de emisiones, implementaremos cuatro optimizaciones físicas y numéricas:
 
 \subsection{1. iPINN Activa con Fuentes Parametrizadas}
@@ -113,25 +114,34 @@ La optimización se reestructurará en dos etapas numéricas deterministas:
 
 ---
 
-\section{Comparativa de Métricas (Línea Base vs. Propuestos)}
+\section*{Comparativa de Métricas (Línea Base vs. Propuestos)}
 \begin{table}[htbp]
 \centering
 \caption{Matriz Comparativa de Arquitectura y Resultados Físicos}
-\begin{tabular}{lcccc}
+\footnotesize % Reduce un poco el tamaño de letra para compactar el texto largo
+\setlength{\tabcolsep}{3pt} % Reduce el espacio horizontal entre columnas
+
+\begin{tabularx}{\textwidth}{
+    >{\raggedright\arraybackslash}p{2.8cm}
+    >{\raggedright\arraybackslash}p{2.2cm}
+    >{\raggedright\arraybackslash}p{2.5cm}
+    >{\raggedright\arraybackslash}p{3cm}
+    >{\raggedright\arraybackslash}X % La última columna toma de forma inteligente el espacio restante
+}
 \toprule
 \textbf{Métrica de Evaluación} & \textbf{Línea Base (Antes)} & \textbf{iPINN Activa (Prop. 1)} & \textbf{Híbrido Adam + L-BFGS (Prop. 2)} & \textbf{VPM + Muestreo de Importancia (Props. 3 y 4 - Actual)} \\
 \midrule
-Loss Total PINN & $0.454$ & $0.462$ & $0.404$ & $5.47$ (Con Estrategias 1 y 3 de reescalado y enmascaramiento subsuelo) \\
-Conformidad Física (Flotabilidad) & Inestable ($N^2 \le 0$) & Parcial ($N^2 > 0$ por softplus) & Estricta ($N^2 > 0$ por Hessiano) & Estricta (Inhibición en laderas sólidas + densidad vertical adaptativa) \\
-Conservación de la Masa ($PM_{2.5}$) & No conservativo & Conservativo ($S \ge 0.0$) & Conservativo ($S \ge 0.0$ exacto) & Conservativo ($S \ge 0.0$, nula en subsuelo y acotada) \\
-Modelo de Fuente $S(x, z, t)$ & Fijo ($S = 0$) & Activo (6ª Red Lux) & Activo (6ª Red Lux + softplus) & Activo (6ª Red + penalización Brinkman en tierra) \\
-Resolución de Bordes (Laderas) & Caja Rectangular & Caja Rectangular & Caja Rectangular & Topografía en Tazón Parabólico ($0.4 \cdot x^2$) \\
+Loss Total PINN & $0.454$ & $0.462$ & $0.404$ & $5.47$ (Con Estrategias 1 y 3 de reescalado y enmascaramiento subsuelo) \\ \addlinespace
+Conformidad Física (Flotabilidad) & Inestable ($N^2 \le 0$) & Parcial ($N^2 > 0$ por softplus) & Estricta ($N^2 > 0$ por Hessiano) & Estricta (Inhibición en laderas sólidas + densidad vertical adaptativa) \\ \addlinespace
+Conservación de la Masa ($PM_{2.5}$) & No conservativo & Conservativo ($S \ge 0.0$) & Conservativo ($S \ge 0.0$ exacto) & Conservativo ($S \ge 0.0$, nula en subsuelo y acotada) \\ \addlinespace
+Modelo de Fuente $S(x, z, t)$ & Fijo ($S = 0$) & Activo (6ª Red Lux) & Activo (6ª Red Lux + softplus) & Activo (6ª Red + penalización Brinkman en tierra) \\ \addlinespace
+Resolución de Bordes (Laderas) & Caja Rectangular & Caja Rectangular & Caja Rectangular & Topografía en Tazón Parabólico ($0.4 \cdot x^2$) \\ \addlinespace
 Optimizador Utilizado & Adam (50 it) & Adam (50 it) & Híbrido Adam + L-BFGS & Híbrido Adam (hasta 300 it) + L-BFGS (300 it) con BO y VPM \\
 \bottomrule
-\end{tabular}
+\end{tabularx}
+\caption{Cuadro 1: Matriz Comparativa de Arquitectura y Resultados Físicos}
 \end{table}
-
-\section{Sección III: Optimización MLOps y Nueva Estructura Agéntica}
+\section*{Sección III: Optimización MLOps y Nueva Estructura Agéntica}
 Como parte de la evolución madura del proyecto, implementamos dos reestructuraciones arquitectónicas mayores destinadas a eliminar la ineficiencia de cómputo y potenciar el análisis científico y la atribución ambiental:
 
 \subsection{1. Optimización Bayesiana de Hiperparámetros (Python)}
