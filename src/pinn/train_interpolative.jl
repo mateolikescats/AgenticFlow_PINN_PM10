@@ -89,15 +89,20 @@ function train_interpolative(data_path="datos_siata_temporal.json")
     prob = discretize(pdesys, discretization)
 
     # 7. Ciclo de Entrenamiento
-    println("Entrenando con Adam (LR=$learning_rate)...")
-    res = Optimization.solve(prob, OptimizationOptimisers.Adam(learning_rate); maxiters=epochs)
+    println("Fase 1: Entrenando con Adam (LR=$learning_rate)...")
+    res1 = Optimization.solve(prob, OptimizationOptimisers.Adam(learning_rate); maxiters=epochs)
+    println("Fase 1 terminada. Loss Adam: ", res1.objective)
     
-    println("Fase interpolativa terminada. Loss final: ", res.objective)
+    # Fase 2: Refinamiento de precisión con L-BFGS (Optimizador de segundo orden)
+    println("Fase 2: Refinando con L-BFGS...")
+    prob2 = Optimization.remake(prob, u0=res1.u)
+    res2 = Optimization.solve(prob2, OptimizationOptimJL.LBFGS(); maxiters=100)
+    println("Fase 2 terminada. Loss final L-BFGS: ", res2.objective)
     
     println("Exportando pesos acoplados...")
     open("pesos_pinn_boussinesq.json", "w") do f
         # No guardamos los pesos masivamente en JSON simple para evitar colapsos, guardamos el loss
-        JSON.print(f, Dict("loss" => res.objective, "info" => "Pesos de 5 redes guardados internamente."))
+        JSON.print(f, Dict("loss" => res2.objective, "info" => "Pesos de 6 redes guardados internamente."))
     end
     println("¡Entrenamiento exportado exitosamente!")
 end

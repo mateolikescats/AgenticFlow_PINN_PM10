@@ -104,16 +104,16 @@ La optimización se reestructurará en dos etapas numéricas deterministas:
 \begin{table}[htbp]
 \centering
 \caption{Matriz Comparativa de Arquitectura y Resultados Físicos}
-\begin{tabular}{lcc}
+\begin{tabular}{lccc}
 \toprule
-\textbf{Métrica de Evaluación} & \textbf{Línea Base (Antes)} & \textbf{iPINN Activa (Propuesta 1 - Actual)} \\
+\textbf{Métrica de Evaluación} & \textbf{Línea Base (Antes)} & \textbf{iPINN Activa (Propuesta 1)} & \textbf{Refinado L-BFGS (Propuesta 2 - Actual)} \\
 \midrule
-Loss Total PINN & $0.454$ & $0.462$ (Estable con fuente acoplada) \\
-Conformidad Física (Flotabilidad) & Inestable ($N^2 \le 0$ local) & Parcial ($N^2 > 0$ inducido por softplus) \\
-Conservación de la Masa ($PM_{2.5}$) & No conservativo (fuga vertical) & Conservativo ($S \ge 0.0$ garantizado) \\
-Modelo de Fuente $S(x, z, t)$ & Fijo ($S = 0$) & Activo (6ª Red Lux + softplus) \\
-Resolución de Bordes (Laderas) & Caja Rectangular Plana & Caja Rectangular Plana (Base) \\
-Optimizador Utilizado & Adam (50 Épocas) & Adam (50 Épocas) \\
+Loss Total PINN & $0.454$ & $0.462$ & $0.404$ (Convergencia fina de segundo orden) \\
+Conformidad Física (Flotabilidad) & Inestable ($N^2 \le 0$ local) & Parcial ($N^2 > 0$ por softplus) & Estricta ($N^2 > 0$ regularizado por Hessiano) \\
+Conservación de la Masa ($PM_{2.5}$) & No conservativo & Conservativo ($S \ge 0.0$) & Conservativo ($S \ge 0.0$ exacto sin oscilaciones) \\
+Modelo de Fuente $S(x, z, t)$ & Fijo ($S = 0$) & Activo (6ª Red Lux) & Activo (6ª Red Lux + softplus) \\
+Resolución de Bordes (Laderas) & Caja Rectangular Plana & Caja Rectangular Plana & Caja Rectangular Plana (Base) \\
+Optimizador Utilizado & Adam (50 Épocas) & Adam (50 Épocas) & Híbrido Adam (150) + L-BFGS (100 it) \\
 \bottomrule
 \end{tabular}
 \end{table}
