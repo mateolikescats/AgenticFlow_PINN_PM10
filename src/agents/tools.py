@@ -23,14 +23,15 @@ class ExecuteJuliaPINNTool(BaseTool):
         with open("pinn_config.json", "w") as f:
             json.dump(config, f)
             
-        print(f"🔄 Lanzando proceso de Julia con {epochs} epochs y LR={learning_rate}...")
+        print(f"Lanzando proceso de Julia con {epochs} epochs y LR={learning_rate}...")
         try:
             # Ejecutar script en Julia (CLI Bridge)
             # Timeout de 5 minutos por seguridad
             result = subprocess.run(
-                ["julia", "src/pinn/train_interpolative.jl"],
+                [r"C:\Users\arnod\AppData\Local\Programs\Julia-1.12.6\bin\julia.exe", "src/pinn/train_interpolative.jl"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=300
             )
             
@@ -61,7 +62,7 @@ class SpatiotemporalClusteringTool(BaseTool):
             return "Error: No se encontró datos_siata_temporal.json"
             
         try:
-            with open("datos_siata_temporal.json", "r") as f:
+            with open("datos_siata_temporal.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
                 
             # Extraer características espaciotemporales pesadas por concentración

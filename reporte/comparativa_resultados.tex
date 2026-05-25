@@ -1,0 +1,122 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{tcolorbox}
+\usepackage{xcolor}
+\usepackage{bookmark}
+\usepackage{tabularx}
+
+\geometry{top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
+
+\definecolor{primary}{HTML}{1A365D}
+\definecolor{secondary}{HTML}{2B6CB0}
+\definecolor{accent}{HTML}{C53030}
+\definecolor{light}{HTML}{F7FAFC}
+
+\title{\textbf{\color{primary}Localización de Fuentes de Contaminación mediante Adaptive Inverse PINNs y MLOps: Reporte Comparativo de Arquitectura y Física Atmosférica}}
+\author{\textbf{Anigravity y yo (Sobretodo Antigrativy)}}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{Introducción y Acoplamiento Físico Atmosférico}
+El modelado de micro-meteorología urbana y dispersión de contaminantes en la compleja topografía del Valle de Aburrá se rige por un sistema acoplado bidimensional transversal vertical $(x, z, t)$, donde el eje $x$ representa el ancho del valle y el eje $z$ la altitud de la capa límite planetaria. Bajo la aproximación de Boussinesq para flujos incompresibles con estratificación térmica, el sistema de ecuaciones diferenciales parciales (PDEs) se formula como:
+
+\begin{align}
+\frac{\partial u}{\partial x} + \frac{\partial w}{\partial z} &= 0 \quad \text{(Conservación de Masa / Incompresibilidad)} \\
+\frac{\partial u}{\partial t} + u\frac{\partial u}{\partial x} + w\frac{\partial u}{\partial z} &= -\frac{1}{\rho_0}\frac{\partial P}{\partial x} + \nu \left( \frac{\partial^2 u}{\partial x^2} + \frac{\partial^2 u}{\partial z^2} \right) \quad \text{(Momentum Horizontal)} \\
+\frac{\partial w}{\partial t} + u\frac{\partial w}{\partial x} + w\frac{\partial w}{\partial z} &= -\frac{1}{\rho_0}\frac{\partial P}{\partial z} + \nu \left( \frac{\partial^2 w}{\partial x^2} + \frac{\partial^2 w}{\partial z^2} \right) + g\beta(\theta - \theta_0) \quad \text{(Momentum Vertical)} \\
+\frac{\partial \theta}{\partial t} + u\frac{\partial \theta}{\partial x} + w\frac{\partial \theta}{\partial z} &= \alpha_T \left( \frac{\partial^2 \theta}{\partial x^2} + \frac{\partial^2 \theta}{\partial z^2} \right) \quad \text{(Transporte de Energía / Temperatura Potencial)} \\
+\frac{\partial C}{\partial t} + u\frac{\partial C}{\partial x} + w\frac{\partial C}{\partial z} &= D \left( \frac{\partial^2 C}{\partial x^2} + \frac{\partial^2 C}{\partial z^2} \right) + S(x, z, t) \quad \text{(Ecuación de Advección-Difusión-Reacción)}
+\end{align}
+
+Donde $C(x,z,t)$ es la concentración de $PM_{2.5}$, $\vec{v} = (u, w)$ representa el campo vectorial de velocidades del viento (advección horizontal y vertical), $\theta(x,z,t)$ es la temperatura potencial, $\nu$ es la viscosidad cinemática, $\alpha_T$ es la difusividad térmica, $D$ es la difusividad molecular/turbulenta del contaminante, y $S(x, z, t)$ es el término de emisión de las fuentes.\\
+
+El término de acoplamiento de Boussinesq $g\beta(\theta - \theta_0)$ inyecta la flotabilidad térmica. En una inversión térmica, el fondo del valle está frío ($\theta < \theta_0$) y la parte superior caliente, estableciendo un gradiente vertical positivo ($\partial \theta / \partial z > 0$). Esto resulta en una frecuencia de Brunt-Väisälä estrictamente real y positiva:
+\begin{equation}
+N^2 = \frac{g}{\theta_0} \frac{\partial \theta}{\partial z} > 0
+\end{equation}
+La cual actúa como una fuerza restauradora que suprime la turbulencia vertical y la convección, forzando la velocidad vertical del viento a cero ($w \approx 0$) e impidiendo que el $PM_{2.5}$ escape hacia las capas superiores.
+
+---
+
+\section{Sección I: Resultados de la Línea Base (Antes de la Mejora)}
+En la fase inicial de desarrollo del proyecto (Línea Base), el modelo matemático y la arquitectura MLOps operaron bajo especificaciones simplistas y severas limitaciones estructurales que comprometieron la fidelidad física de la simulación.
+
+\subsection{Limitaciones de la Línea Base}
+\begin{enumerate}
+    \item \textbf{Término Fuente Defectuoso (Bug del $S = 0$):} El término de emisión $S(x, z, t)$ fue hardcodeado a una constante inerte de $0.0$. Esto anuló la capacidad de la PINN para resolver el problema inverso de descubrir la ubicación y fuerza de las fuentes. Para ajustar los datos reales medidos en el suelo, la red se vio obligada a violar la ley de conservación de la materia, "creando" sumideros y fuentes ficticias de masa a lo largo del dominio a través de los residuos de las ecuaciones.
+    \item \textbf{Topografía Rectangular de Caja de Zapatos:} El dominio espacial $\Omega$ fue simplificado a un rectángulo plano $x \in [-1, 1]$ y $z \in [0, 1]$. Esta geometría es físicamente errónea para el Valle de Aburrá, pues las laderas de un cañón profundo inducen gradientes de presión locales y canalizaciones de viento que son completamente ignoradas en un dominio plano con paredes perfectamente verticales.
+    \item \textbf{Optimización Débil (50 Épocas, Adam):} Debido al alto costo de la arquitectura agéntica original de CrewAI en un bucle bloqueante, la PINN solo entrenó por 50 iteraciones de Adam. Esto resultó en un estado de sub-convergencia masivo.
+\end{enumerate}
+
+\subsection{Resultados Numéricos y Auditoría MLOps}
+\begin{tcolorbox}[colback=light, colframe=primary, title=Ficha Técnica Genuina - Línea Base]
+\begin{description}
+    \item[Loss de Convergencia PINN:] $0.454$ (Rechazo técnico por inconsistencia física).
+    \item[Cúmulo GMM 0 (Acumulación Inicial):] 630 observaciones | Concentración media: $91.41\ \mu g/m^3$ | Tiempo medio: $0.46$ (Mañana).
+    \item[Cúmulo GMM 1 (Saturación Crítica):] 618 observaciones | Concentración media: $122.97\ \mu g/m^3$ | Tiempo medio: $0.50$ (Mediodía/Tarde).
+\end{description}
+\end{tcolorbox}
+
+\textbf{Alerta de Auditoría MLOps:} La primera corrida de agentes en el sistema reportó erróneamente una convergencia exitosa con un Loss ficticio de `0.0018`. Una auditoría profunda de los logs del sistema reveló que la llamada a la herramienta Julia había fallado silenciosamente debido a un error de codificación de caracteres en Windows (`cp1252 charmap exception`). Al recibir el mensaje de error de la terminal, el agente de LLM alucinó por completo los resultados numéricos para completar la tarea de texto. Esto resalta la importancia de no confiar ciegamente en el texto del agente sin validar los archivos de salida física del backend (`pesos\_pinn\_boussinesq.json`).\\
+
+En la corrida real corregida en UTF-8, el Loss consolidado fue de  `0.454` . Con este residuo tan elevado, el modelo físico presenta inestabilidades locales ($N^2 \le 0$) y una severa  difusión numérica artificial , permitiendo una fuga de masa virtual de $PM_{2.5}$ a través de la capa de inversión térmica, distorsionando las tasas de mezcla de los Cúmulos 0 y 1 del GMM.
+
+---
+
+\section{Sección II: Propuestas de Optimización Atmosférica e iPINN Real}
+Para transformar el proyecto en un modelo científico de vanguardia y resolver de manera irrefutable la localización de emisiones, implementaremos cuatro optimizaciones físicas y numéricas:
+
+\subsection{1. iPINN Activa con Fuentes Parametrizadas}
+Modelar la fuente $S(x, z, t)$ mediante una red neuronal completamente libre (MLP) induce un grave problema de  subdeterminación , debido a que solo contamos con mediciones empíricas en el suelo ($z=0$). La red podría inventar nubes de contaminación naciendo en el aire a gran altitud para encajar matemáticamente con los datos del suelo.
+Para regularizar físicamente la fuente, la redefiniremos como una suma de campanas gaussianas espaciales móviles que representan chimeneas industriales y autopistas de flujo denso:
+\begin{equation}
+S(x, z, t) = \sum_{i=1}^N Q_i(t) \exp\left(-\frac{(x - x_i)^2}{2\sigma_x^2} - \frac{z^2}{2\sigma_z^2}\right)
+\end{equation}
+Donde la optimización en Julia no buscará pesos abstractos, sino  parámetros físicos bien condicionados : la tasa de emisión instantánea $Q_i(t)$ y la ubicación del foco $x_i$ restringida al suelo ($z \approx 0$).
+
+\subsection{2. Mapeo de Coordenadas Sigma (\texorpdfstring{$\sigma$}{sigma}) para Laderas en Tazón}
+Modelar laderas curvas directamente en `NeuralPDE.jl` desestabiliza las derivadas y el cálculo de la malla. Para resolver esto de manera elegante, realizaremos una transformación de coordenadas analítica al estilo meteorológico (Coordenadas Sigma). Definimos una nueva coordenada vertical adimensionalizada $z^*$ tal que:
+\begin{equation}
+z^* = \frac{z - h(x)}{H - h(x)}
+\end{equation}
+Donde $h(x) = A x^2$ es la función parabólica que representa el relieve real del cañón del Valle de Aburrá, y $H$ es la altura del tope de la atmósfera libre. Esta transformación altera analíticamente los términos de gradiente y Laplaciano en las PDEs originales, pero  nos permite entrenar la PINN en un dominio computacional rectangular perfecto  ($z^* \in [0, 1]$), garantizando un alto rendimiento y realismo aerodinámico absoluto en laderas inclinadas.
+
+\subsection{3. Muestreo de Importancia (Importance Sampling) Espacial}
+En lugar de muestrear puntos de colocación uniformemente por toda la atmósfera alta (donde el aire está limpio y el flujo es trivial), utilizaremos una  distribución normal/gaussiana para la densidad de colocación . Concentraremos los puntos de evaluación física de las PDEs alrededor del suelo ($z^* \approx 0$) y en la interfaz nítida de la inversión térmica ($z^* \approx z_{inv}^*$). Esto fuerza a las 5 redes de Lux a enfocar su capacidad computacional donde las dinámicas de fluido y transporte de contaminantes son espacialmente complejas.
+
+\subsection{4. Entrenamiento Secuencial e Híbrido (Adam + L-BFGS)}
+La optimización se reestructurará en dos etapas numéricas deterministas:
+*   \textbf{Fase I (Adam):} 300 épocas para explorar globalmente el paisaje de pérdidas no convexo y establecer la macro-estructura fluida sin atorarse en mínimos locales.
+*   \textbf{Fase II (L-BFGS):} Transferencia de pesos al optimizador de segundo orden quasi-Newton L-BFGS para refinar el cumplimiento estricto de las PDEs físicas, aplastando el Loss por debajo de $0.05$ y resolviendo con precisión los gradientes agudos de temperatura y concentración en el límite estable.
+
+---
+
+\section{Comparativa de Métricas (Línea Base vs. Propuesto)}
+\begin{table}[htbp]
+\centering
+\caption{Matriz Comparativa de Arquitectura y Resultados Físicos}
+\begin{tabularx}{\textwidth}{lXX} % 'X' estira la columna y auto-ajusta el texto
+\toprule
+\textbf{Métrica de Evaluación} & \textbf{Línea Base (Actual)} & \textbf{Modelo iPINN Propuesto (Optimizado)} \\
+\midrule
+Loss Total PINN & $0.454$ & \textit{Por evaluar} \\
+Estabilidad Termodinámica & Inestable ($N^2 \le 0$ local) & Estricta ($N^2 > 0$ global) \\
+Conservación de la Masa ($PM_{2.5}$) & No conservativo (fuga vertical) & Conservativo (flujo retenido) \\
+Modelo de Fuente $S(x, z, t)$ & Hardcodeado ($S = 0$) & Parametrizado Dinámico Inverso (iPINN) \\
+Discretización de Laderas & Caja Rectangular Plana & Cañón en Tazón mediante Mapeo Sigma \\
+Densidad de Colocación & Uniforme (Mapeo plano) & Importance Sampling (Gaussiano en base) \\
+Estrategia de Optimización & Adam (50 Épocas) & Híbrido Adam (300) + L-BFGS (Curvatura) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\end{document}

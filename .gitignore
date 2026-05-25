@@ -22,3 +22,8 @@ Project.toml.backup
 pesos_pinn.json
 scratch_siata.py
 init_julia.jl
+
+# Api
+
+.env/ 
+

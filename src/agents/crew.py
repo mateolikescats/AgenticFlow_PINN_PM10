@@ -1,15 +1,21 @@
 import os
-from crewai import Agent, Task, Crew, Process
-from langchain_google_genai import ChatGoogleGenerativeAI
+from crewai import Agent, Task, Crew, Process, LLM
 from tools import ExecuteJuliaPINNTool, SpatiotemporalClusteringTool
 
-# 1. Configurar el LLM: Gemini 1.5 Pro (o Flash)
+# Cargar variables de entorno desde un archivo .env si existe
+if os.path.exists(".env"):
+    with open(".env") as f:
+        for line in f:
+            if "=" in line and not line.strip().startswith("#"):
+                key, value = line.strip().split("=", 1)
+                os.environ[key.strip()] = value.strip()
+
+# 1. Configurar el LLM: Gemini 3.5 Flash
 # Se requiere que el usuario haya seteado la variable de entorno GEMINI_API_KEY
-llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-pro-latest",
-    verbose=True,
+llm = LLM(
+    model="gemini/gemini-3.5-flash",
     temperature=0.3,
-    google_api_key=os.environ.get("GEMINI_API_KEY", "")
+    api_key=os.environ.get("GEMINI_API_KEY", "")
 )
 
 # 2. Definición de Agentes
