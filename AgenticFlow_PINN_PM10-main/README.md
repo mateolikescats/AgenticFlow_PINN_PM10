@@ -41,7 +41,28 @@ Desarrollo de un ecosistema de agentes LLM orquestado por **Gemini 1.5 Pro**, di
 
 ## 🔄 Pipeline Completo de Integración (Visión a Futuro)
 
-Para consolidar el desarrollo en una arquitectura verdaderamente autónoma e interconectada, se desarrollará el siguiente ciclo (Pipeline) de ejecución end-to-End:
+Para consolidar el desarrollo en una arquitectura verdaderamente autónoma e interconectada, se desarrollará el siguiente ciclo (Pipeline) de ejecución end-to-End, estructurado como se muestra a continuación:
+
+```mermaid
+graph TD
+    A[Datos SIATA - JSON] --> B[Preprocesamiento Python]
+    B --> C{test_data_integrity.py <br> pytest}
+    C -- Falla --> D[Detener Pipeline / Reportar Error]
+    C -- Éxito (Garantizado) --> E[datos_siata_temporal.json]
+    
+    E --> F[Agente: Physics Architect]
+    F --> G[Escribir pinn_config.json <br> hiperparámetros]
+    G --> H[Motor PINN - Julia / NeuralPDE.jl]
+    H --> I[Entrenamiento 5 Redes Acopladas <br> u, T, vx, vz, P]
+    I --> J[Verificación de Convergencia <br> Loss < 0.5]
+    J -- Falla/NaN --> K[Agente: Reaction Validator <br> Recomendar Ajuste LR/Epochs]
+    K --> F
+    J -- Éxito --> L[pesos_pinn_boussinesq.json]
+    
+    L --> M[Agente: Forensic Investigator]
+    M --> N[Spatiotemporal GMM Clustering Tool]
+    N --> O[Asignación Forense de Fuentes <br> Mapa de Hotspots]
+```
 
 1. **Adquisición Dinámica (Agente + Sensor)**:
    - Python inicia el ciclo. El agente extrae los datos geográficos de SIATA o usa el dataset temporal (generado por `scratch_siata.py`).
@@ -54,6 +75,21 @@ Para consolidar el desarrollo en una arquitectura verdaderamente autónoma e int
    - Una vez Julia consolida el campo de advección, se pasa a la resolución Inversa. Julia descubre la Función Fuente $S(x, z)$ y exporta las coordenadas de máxima emisión.
 5. **Clustering y Atribución Final**:
    - El *Forensic Investigator Agent* aplica *Gaussian Mixture Models (GMM)* sobre las coordenadas descubiertas por Julia para modelarlas como nubes y cruzarlas con mapas estáticos (OpenStreetMap) atribuyendo, sin intervención humana, la culpa de la contaminación a corredores industriales o vías altamente congestionadas.
+
+---
+
+## 🧪 Aseguramiento de Calidad y Robustez Matemática (QA & Testing Framework)
+
+> [!IMPORTANT]
+> **¿Por qué son críticas estas pruebas en Scientific ML / PINNs?**
+> A diferencia de la regresión clásica, una PINN entrena minimizando los residuos de ecuaciones diferenciales parciales espaciotemporales. Si el preprocesador de datos inyecta un solo `NaN`, un `inf`, o coordenadas fuera del dominio del Valle de Aburrá ($\Omega$), las derivadas parciales computadas por diferenciación automática en Julia colapsarán a `NaN`, deteniendo por completo el optimizador numérico.
+>
+> Nuestro suite de pruebas en `tests/test_data_integrity.py` cuenta con **39 aserciones** automatizadas que previenen fallos catastróficos en el motor de optimización:
+>
+> *   **Verificación del Dominio Geográfico Complejo:** Comprueba que los puntos evaluados estén dentro de la topología real del Valle de Aburrá (usando delimitación por Shapely), previniendo la distorsión del residuo en laderas y bordes.
+> *   **Monotonía y Linealidad del Escalamiento:** Asegura que el mapeo espacial y temporal a los dominios adimensionales $[-1, 1]$ (espacio) y $[0, 1]$ (tiempo) sea lineal y monótonamente creciente. Si esto fallara, el cálculo físico de gradientes espaciales ($\frac{\partial u}{\partial x}$) representaría una física deformada.
+> *   **Tratamiento de Ruido Extremo de Sensores:** Filtra valores negativos de concentración (ruido común en sensores de bajo costo) forzándolos a $0.0$ físico para no violar la conservación de masa, y satura lecturas fuera de rango o infinitas de forma segura a $1.0$.
+> *   **Robustez de Ingesta:** Valida el comportamiento estable del pipeline ante dataframes vacíos o con datos faltantes (`NaN`).
 
 ---
 
@@ -78,6 +114,16 @@ source .venv/bin/activate  # En Linux/Mac
 ```bash
 pip install -r requirements.txt
 ```
+
+> [!TIP]
+> **Solución de Problemas (Troubleshooting) en Windows:**
+> * **Error de SSL (`SSLError`) al descargar datos de SIATA en entornos Conda:**
+>   Si tu entorno de Conda no localiza las librerías OpenSSL (`libssl.dll` / `libcrypto.dll`), corre tus comandos anteponiendo el ejecutable de Conda. Esto forzará la carga de las variables dinámicas de entorno necesarias:
+>   ```powershell
+>   & D:\Usuarios\Cristian\miniconda3\Scripts\conda.exe run -p D:\Usuarios\Cristian\miniconda3 .venv\Scripts\python.exe -m pytest tests/test_data_integrity.py
+>   ```
+> * **Errores de Compilación en dependencias (C++ Build Tools):**
+>   Librerías como `greenlet>=3` pueden fallar en Windows si no tienes Microsoft Visual C++ Build Tools instalado. El archivo `requirements.txt` está configurado para forzar `greenlet<3`, lo que instala una versión precompilada (`wheel`) y evita la compilación desde código fuente.
 
 ### 2. Entorno de Julia (PINN)
 Asegúrese de tener Julia `1.10+` instalado.

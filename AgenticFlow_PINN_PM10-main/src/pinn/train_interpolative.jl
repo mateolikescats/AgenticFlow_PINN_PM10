@@ -90,7 +90,16 @@ function train_interpolative(data_path="datos_siata_temporal.json")
 
     # 7. Ciclo de Entrenamiento
     println("Entrenando con Adam (LR=$learning_rate)...")
-    res = Optimization.solve(prob, OptimizationOptimisers.Adam(learning_rate); maxiters=epochs)
+    
+    # Callback para monitorear el entrenamiento desde Python en tiempo real
+    epoch_count = 0
+    callback = function (p, l, args...)
+        epoch_count += 1
+        println("[EPOCH_LOG] Epoch: $epoch_count | Loss: $l")
+        return false
+    end
+
+    res = Optimization.solve(prob, OptimizationOptimisers.Adam(learning_rate); callback = callback, maxiters=epochs)
     
     println("Fase interpolativa terminada. Loss final: ", res.objective)
     
