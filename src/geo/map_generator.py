@@ -74,7 +74,6 @@ class DomainMapGenerator:
 if __name__ == "__main__":
     from src.geo.aburra_domain import AburraDomain
     logging.basicConfig(level=logging.INFO)
-    
     # Prueba con datos mockeados para validación visual
     domain = AburraDomain()
     mapper = DomainMapGenerator(domain.get_spatial_bounds())
