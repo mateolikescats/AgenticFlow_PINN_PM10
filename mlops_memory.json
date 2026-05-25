@@ -1,0 +1,29 @@
+[
+    {
+        "timestamp": "2026-05-25T16:40:30.877089",
+        "epochs": 5,
+        "requested_lr": 0.8,
+        "started_lr": 0.8,
+        "final_lr": 0.8,
+        "status": "nan",
+        "final_loss": null
+    },
+    {
+        "timestamp": "2026-05-25T16:49:32.310174",
+        "epochs": 5,
+        "requested_lr": 0.8,
+        "started_lr": 0.01,
+        "final_lr": 0.01,
+        "status": "success",
+        "final_loss": 186.94004186608043
+    },
+    {
+        "timestamp": "2026-05-25T17:19:09.749680",
+        "epochs": 50,
+        "requested_lr": 0.01,
+        "started_lr": 0.01,
+        "final_lr": 0.00125,
+        "status": "stalled",
+        "final_loss": null
+    }
+]

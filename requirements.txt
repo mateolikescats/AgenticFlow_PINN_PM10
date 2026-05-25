@@ -8,3 +8,4 @@ pytest
 crewai
 langchain-google-genai
 pydantic
+matplotlib

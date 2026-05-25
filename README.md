@@ -4,56 +4,103 @@ Este repositorio contiene el código fuente para un proyecto de investigación e
 
 ## 📌 Contexto del Problema
 
-El Valle de Aburrá presenta una topografía compleja (un cañón estrecho) y condiciones meteorológicas variables que dificultan la identificación precisa de los "hotspots" o fuentes de emisión de contaminación del aire. Al tratar de identificar estas fuentes utilizando exclusivamente los datos de los sensores, nos enfrentamos a un problema matemático "mal planteado" (*ill-posed*).
+El Valle de Aburrá presenta una topografía compleja (un cañón estrecho) y condiciones meteorológicas variables que dificultaron la identificación precisa de los "hotspots" o fuentes de emisión de contaminación del aire. Al tratar de identificar estas fuentes utilizando exclusivamente los datos de los sensores, nos enfrentamos a un problema matemático "mal planteado" (*ill-posed*).
 
 Para solucionar esto, integramos:
 1. **Datos de Alta Densidad**: Red de "Ciudadanos Científicos" del SIATA.
 2. **Restricción Física**: Ecuación de Advección-Difusión-Reacción (ADR).
-3. **Optimización Agéntica**: Modelos de Lenguaje (LLMs) orquestando el entrenamiento y validando la termodinámica.
-
----
+3. **Optimización Agéntica**: Modelos de Lenguaje (LLMs) orquestando el entrenamiento y validando la física.
 
 ## 🏗️ Arquitectura y Estado del Proyecto (Curriculum Learning)
 
-El proyecto se está desarrollando de forma iterativa y "hueso a hueso" para garantizar estabilidad matemática.
+El proyecto se está desarrollando de forma iterativa y "hueso a hueso" para garantizar estabilidad matemática y física. A continuación se detallan las características reales implementadas en la base de código actual:
 
 ### ✅ Fase 1: Fundamentos Geoespaciales y Datos (Python)
 **Estado:** `Completado`
-- **Ingeniería de Datos**: Cliente automatizado para la Red de Ciudadanos Científicos de SIATA.
-- **Filtrado de Ruido**: Algoritmo `IsolationForest` para detectar y descartar lecturas anómalas por descalibración de sensores *low-cost*.
-- **Restricción de Dominio ($\Omega$)**: Bounding box topológico del Valle de Aburrá para evitar distorsión de la matriz Jacobiana con coordenadas irreales.
-- **Preprocesamiento Adimensional**: Mapeo estricto del espacio a $[-1, 1]$ y tiempo a $[0, 1]$.
+- **Ingeniería de Datos**: Cliente automatizado para la Red de Ciudadanos Científicos de SIATA (`siata_scraper.py`).
+- **Filtrado de Ruido**: Algoritmo `IsolationForest` para detectar y descartar lecturas anómalas por descalibración de sensores *low-cost* (umbral de contaminación de $5\%$).
+- **Restricción de Dominio ($\Omega$)**: Bounding box topológico del Valle de Aburrá (Lat $[6.00, 6.45]$, Lon $[-75.70, -75.30]$) para evitar distorsiones con coordenadas ficticias (`aburra_domain.py`).
+- **Preprocesamiento Adimensional**: Mapeo estricto del espacio a $[-1, 1]$ y tiempo a $[0, 1]$ para mitigar gradientes numéricos patológicos (`preprocessing.py`).
+- **Mapeador Visual**: Generador de mapas interactivos HTML (`mapa_validacion.html`) basado en `folium` para verificar los límites físicos (`map_generator.py`).
 
 ### ✅ Fase 2: Motor Físico PINN (Julia)
-**Estado:** `Completado (Script Base)`
-- **Framework**: `NeuralPDE.jl` y `ModelingToolkit.jl` por su alto rendimiento.
-- **Acoplamiento Boussinesq (Termodinámica)**: Acorde a las dinámicas del Valle de Aburrá (documentadas en literatura de Spitsbergen/Inversión Térmica), la ecuación de advección simple fue reemplazada por un sistema de 5 ecuaciones en un corte transversal vertical ($x, z$).
-- **Topografía como Restricción**: Se imponen *hard-constraints* en las laderas y fondo del valle (condiciones No-Slip).
-- **Flotabilidad y Estratificación**: La velocidad vertical del viento ($v_z$) está directamente acoplada al gradiente de temperatura ($T$) mediante el término de flotabilidad $\beta g (T - T_{ref})$, modelando matemáticamente la inversión térmica y acumulación de partículas en la capa límite.
-- **Redes Neuronales Múltiples**: 5 arquitecturas MLP separadas en `Lux.jl` para predecir $[u, T, v_x, v_z, P]$ evitando colapso de gradientes entre dominios físicos dispares.
+**Estado:** `Completado y Optimizado`
+- **Framework**: `NeuralPDE.jl`, `ModelingToolkit.jl` y `Lux.jl` por su alto rendimiento científico.
+- **Acoplamiento Boussinesq (Termodinámica)**: Simulación bidimensional transversal $(x, z)$ que acopla 5 ecuaciones diferenciales parciales: masa/continuidad, momentum X y Z (con flotabilidad térmica de Boussinesq $\beta g (T - T_{ref})$), transporte de calor y transporte de contaminantes ($u$) con tasa de emisión $S(x, z, t)$ y penalización Brinkman.
+- **Topografía como Restricción**: Se aplica una máscara de relieve parabólica $z = 0.4x^2$ acoplada a una penalización Darcy-Brinkman masiva para forzar a que las velocidades y concentraciones sean cero en el subsuelo.
+- **Muestreo de Importancia (`ImportanceSampler`)**: Algoritmo Quasi-Monte Carlo personalizado que sobremuestrea zonas cerca del suelo ($z \approx 0$) y en la inversión térmica ($z \approx 0.5$), proyectando automáticamente puntos subterráneos al área atmosférica activa (`AdvectionDiffusion.jl`).
+- **Redes Neuronales Múltiples**: Se emplean **6 arquitecturas MLP independientes en Lux.jl** para evitar la interferencia de gradientes. La sexta red (emisión $S$) cuenta con una función de activación final `softplus` para garantizar que la emisión de contaminantes sea físicamente positiva ($S \geq 0$).
+- **Entrenamiento en Dos Etapas (`train_interpolative.jl`)**:
+  1.  **Fase 1 (Global)**: Optimización inicial rápida con `Adam` usando hiperparámetros inyectados por JSON.
+  2.  **Fase 2 (Refinamiento)**: Optimización de precisión milimétrica mediante el resolvedor de segundo orden `L-BFGS`.
 
-### ✅ Fase 3: Arquitectura Agéntica (CrewAI)
-**Estado:** `Completado (Esqueleto y Tools)`
-Desarrollo de un ecosistema de agentes LLM orquestado por **Gemini 1.5 Pro**, diseñado para aislar el razonamiento del cómputo numérico puro:
-- **Physics Architect:** Controla el ciclo de entrenamiento. Usa un *CLI-Bridge Tool* (`ExecuteJuliaPINNTool`) para lanzar `train_interpolative.jl` y ajusta los hiperparámetros (Adam/Epochs) según los logs de *Loss* en tiempo real.
-- **Reaction Validator:** Verifica que los resultados no violen las leyes de la termodinámica.
-- **Source Forensic Investigator:** Emplea algoritmos de agrupamiento como **Gaussian Mixture Models (GMM)** y **ST-DBSCAN** a través de `SpatiotemporalClusteringTool` para separar las nubes dinámicas de contaminación en el tiempo y el espacio, asignando probabilidades a las fuentes originarias.
+### ✅ Fase 3: Arquitectura Agéntica y MLOps (Python - CrewAI)
+**Estado:** `Completado y Operativo`
+Desarrollo de un ecosistema de agentes LLM orquestado por **Gemini 3.5 Flash**, diseñado para aislar el razonamiento del cálculo numérico puro. Se cuenta con **4 agentes activos** (`crew.py`):
+- **Thermodynamics Validator (`reaction_validator`)**: Analiza la estabilidad de la inversión térmica (gradiente vertical de temperatura) y la atenuación de vientos en las laderas parabólicas.
+- **Source Forensic Investigator (`forensic_investigator`)**: Aplica Gaussian Mixture Models (GMM) mediante la herramienta `SpatiotemporalClusteringTool` y cruza coordenadas con el Valle de Aburrá usando la herramienta `GeospatialValleQueryTool`.
+- **Environmental Policy Advisor (`policy_advisor`)**: Formula planes dinámicos de alertas tempranas, restricciones vehiculares focalizadas y mitigación adaptativa de emergencias en el cañón.
+- **LaTeX Forensic Reporter (`latex_reporter`)**: Compila las conclusiones del dictamen en un documento standalone académico `reporte/reporte_forense.tex` mediante la herramienta `WriteLatexForensicReportTool`.
 
-## 🔄 Pipeline Completo de Integración (Visión a Futuro)
+#### 🤖 Optimización Bayesiana Activa (`bayesian_optimization.py`)
+Módulo independiente que calibra de forma automatizada los hiperparámetros de la PINN (Learning Rate y épocas de Adam) ejecutando dinámicamente el motor de Julia. Utiliza un regresor de **Procesos Gaussianos (GP)** con kernel Matérn ($2.5$) y la función de adquisición de **Mejora Esperada (Expected Improvement - EI)** para minimizar la pérdida de manera robusta, escribiendo los resultados en `pinn_config.json`.
 
-Para consolidar el desarrollo en una arquitectura verdaderamente autónoma e interconectada, se desarrollará el siguiente ciclo (Pipeline) de ejecución end-to-End:
+#### 🛡️ Monitoreo MLOps en Tiempo Real y Resiliencia (Meta-Learning)
+Se ha integrado un sistema de telemetría y resiliencia en la ejecución de la PINN:
+- **Monitoreo en Tiempo Real**: Python captura la salida estándar (`stdout`) de Julia en tiempo real mediante tuberías (`subprocess.Popen`). Esto permite rastrear de forma interactiva el progreso de las pérdidas durante las fases de Adam y L-BFGS (`[EPOCH_LOG]`).
+- **Control de Divergencias y Estancamiento**: Si la pérdida colapsa a valores no numéricos (`NaN`) o se estanca en una meseta inerte (cambio < $10^{-5}$ durante 15 épocas), el controlador de Python aborta la simulación de inmediato para liberar recursos de cómputo.
+- **Memoria Meta-Learning (`mlops_memory.json`)**: Registra el historial de ejecuciones con sus respectivas tasas de aprendizaje (LR), épocas y estados (éxito/fracaso). Si un LR causa una divergencia, el sistema realiza un **ajuste preventivo**, reduciendo a la mitad el LR en intentos posteriores. Soporta hasta 3 reintentos de decaimiento automático.
+- **Visualización de Pérdida**: Genera de forma automática una gráfica estilizada lineal (`reporte/curva_perdida.png`) que muestra la progresión de la convergencia de la pérdida a lo largo de las épocas de entrenamiento, sirviendo como diagnóstico visual para los auditores.
 
-1. **Adquisición Dinámica (Agente + Sensor)**:
-   - Python inicia el ciclo. El agente extrae los datos geográficos de SIATA o usa el dataset temporal (generado por `scratch_siata.py`).
-2. **Inyección en Julia (CLI-Bridge)**:
-   - El *Physics Architect Agent* escribe un archivo `pinn_config.json` con los hiperparámetros óptimos y lanza un subproceso de sistema llamando al motor `NeuralPDE` de Julia (`train_interpolative.jl`).
-3. **Entrenamiento Físico (Curriculum Learning Autonómo)**:
-   - Julia carga las 5 redes acopladas y empieza a optimizar. Mientras entrena, imprime su error a la salida estándar (`stdout`).
-   - El Agente de Python está *escuchando* esta salida. Si detecta un colapso del gradiente (`NaN`) o un estancamiento en un mínimo local, detiene el proceso de Julia, razona lógicamente, y lo reinicia ajustando el *Learning Rate*.
-4. **Fase Inversa y Extracción de Coordenadas**:
-   - Una vez Julia consolida el campo de advección, se pasa a la resolución Inversa. Julia descubre la Función Fuente $S(x, z)$ y exporta las coordenadas de máxima emisión.
-5. **Clustering y Atribución Final**:
-   - El *Forensic Investigator Agent* aplica *Gaussian Mixture Models (GMM)* sobre las coordenadas descubiertas por Julia para modelarlas como nubes y cruzarlas con mapas estáticos (OpenStreetMap) atribuyendo, sin intervención humana, la culpa de la contaminación a corredores industriales o vías altamente congestionadas.
+---
+
+## 📊 Propuestas de Métricas para la Evaluación de Pérdida del Entrenamiento
+
+Para enriquecer la evaluación del entrenamiento y evitar falsos positivos de convergencia en este sistema acoplado no lineal, se proponen e implementan conceptualmente las siguientes métricas diagnósticas:
+
+### 1. Desglose Multicomponente de la Pérdida (Loss Dissection)
+Dado que la pérdida agregada puede ocultar comportamientos anómalos de alguna variable, se propone monitorear y graficar por separado:
+*   **Residuo Físico de la PDE ($L_{PDE}$)**: Sumatoria de los residuos cuadráticos de las 5 ecuaciones diferenciales parciales dentro de la atmósfera activa.
+*   **Pérdida de Condiciones de Frontera ($L_{BC}$)**: Precisión del ajuste en laderas (condición no-slip) y perfil de inversión térmica basal.
+*   **Pérdida Empírica de Datos ($L_{Data}$)**: El error absoluto o cuadrático respecto a los sensores de SIATA (`additional_loss`). Se calcula usando el **NRMSE** (Normalized Root Mean Squared Error) para independizar la escala de las variables adimensionales.
+
+### 2. Índice de Violación Física (Physics Violation Index - PVI)
+Métricas calculadas en una cuadrícula densa uniforme de evaluación al final de cada ciclo:
+*   **Volumen de Divergencia de Vientos**: $\int_{\Omega} \left| \frac{\partial v_x}{\partial x} + \frac{\partial v_z}{\partial z} \right| d\Omega$. Evalúa la incompresibilidad del flujo. Valores mayores a $0.05$ denotan fallos de masa de aire.
+*   **Tasa de Negatividad Volumétrica (NVR)**: Porcentaje del espacio en el cual la variable de concentración $u(x,z,t) < 0$, lo cual viola el principio de conservación de masa de la materia.
+
+### 3. Índice de Estratificación Térmica (TSI)
+Mide la consistencia termodinámica de la inversión térmica en la capa límite:
+*   **TSI** = $\frac{\partial T}{\partial z}$.
+*   Verifica que en la región de inversión térmica ($z \approx 0.5$), el TSI sea positivo ($\text{TSI} > 0$), y que el viento vertical $v_z$ se atenúe exponencialmente al aproximarse a esta barrera térmica, validando el fenómeno de confinamiento.
+
+### 4. Rigidez de Gradiente del Acoplamiento ($\lambda_{stiff}$)
+Monitorea la competencia numérica entre la física y los datos reales:
+$$\lambda_{stiff} = \frac{\|\nabla_{\theta} L_{PDE}\|_2}{\|\nabla_{\theta} L_{Data}\|_2}$$
+*   Si $\lambda_{stiff} \gg 1$, la física impone restricciones rígidas impidiendo que la red se ajuste a los sensores reales.
+*   Si $\lambda_{stiff} \ll 1$, la red ignora el modelo matemático y realiza una interpolación puramente de datos. El valor óptimo se calibra dinámicamente mediante el optimizador bayesiano.
+
+---
+
+## 🔄 Pipeline Completo de Integración
+
+El ciclo de ejecución autónomo y conectado opera de la siguiente manera:
+
+```mermaid
+graph TD
+    A[preprocessing.py / siata_scraper.py] -->|Datos Limpios y Adimensionales| B(datos_siata_temporal.json)
+    C[bayesian_optimization.py] -->|GP + Expected Improvement| D[pinn_config.json]
+    D -->|Hiperparámetros de Adam/Epochs| E[train_interpolative.jl - Julia]
+    B -->|Muestreo por Importancia y Ajuste Empírico| E
+    E -->|1. Adam / 2. L-BFGS| F(pesos_pinn_boussinesq.json)
+    F -->|Pérdida Resultante| C
+    F -->|Salida de Emisiones S| G[crew.py - CrewAI Agents]
+    G -->|Clustering GMM| H[forensic_investigator]
+    G -->|Validación Termodinámica| I[reaction_validator]
+    H & I -->|Alertas Adaptativas| J[policy_advisor]
+    J -->|Genera Código LaTeX| K[latex_reporter]
+    K -->|Documento Académico Standalone| L[reporte/reporte_forense.tex]
+```
 
 ---
 

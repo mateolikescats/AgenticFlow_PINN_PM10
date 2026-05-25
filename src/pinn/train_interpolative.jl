@@ -91,14 +91,27 @@ function train_interpolative(data_path="datos_siata_temporal.json")
     prob = discretize(pdesys, discretization)
 
     # 7. Ciclo de Entrenamiento
+    epoch_count = 0
+    callback_adam = function (p, l, args...)
+        epoch_count += 1
+        println("[EPOCH_LOG] Epoch: $epoch_count | Loss: $l")
+        return false
+    end
+
     println("Fase 1: Entrenando con Adam (LR=$learning_rate)...")
-    res1 = Optimization.solve(prob, OptimizationOptimisers.Adam(learning_rate); maxiters=epochs)
+    res1 = Optimization.solve(prob, OptimizationOptimisers.Adam(learning_rate); callback = callback_adam, maxiters=epochs)
     println("Fase 1 terminada. Loss Adam: ", res1.objective)
     
     # Fase 2: Refinamiento de precisión con L-BFGS (Optimizador de segundo orden)
+    callback_lbfgs = function (p, l, args...)
+        epoch_count += 1
+        println("[EPOCH_LOG] Epoch: $epoch_count | Loss: $l | Stage: L-BFGS")
+        return false
+    end
+
     println("Fase 2: Refinando con L-BFGS...")
     prob2 = Optimization.remake(prob, u0=res1.u)
-    res2 = Optimization.solve(prob2, OptimizationOptimJL.LBFGS(); maxiters=lbfgs_iters)
+    res2 = Optimization.solve(prob2, OptimizationOptimJL.LBFGS(); callback = callback_lbfgs, maxiters=lbfgs_iters)
     println("Fase 2 terminada. Loss final L-BFGS: ", res2.objective)
     
     println("Exportando pesos acoplados...")
