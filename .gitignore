@@ -27,3 +27,5 @@ init_julia.jl
 
 .env/ 
 
+.env
+
