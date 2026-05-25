@@ -78,8 +78,8 @@ function train_interpolative(data_path="datos_siata_temporal.json")
         return (loss_u + loss_T) / max(1, n_points)
     end
 
-    # 4. Estrategia de Discretización (Physics-Informed)
-    strategy = QuasiRandomTraining(128) # Puntos de colocación reducidos por complejidad
+    # 4. Estrategia de Discretización (Physics-Informed) con Muestreo de Importancia (Propuesta 3)
+    strategy = QuasiRandomTraining(128; sampling_alg = ImportanceSampler())
     
     # 5. Configurar el discretizador de NeuralPDE
     discretization = PhysicsInformedNN(chains, strategy; additional_loss=additional_loss)

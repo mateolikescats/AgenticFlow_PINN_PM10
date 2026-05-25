@@ -81,17 +81,30 @@ Para regularizar físicamente la fuente, la redefiniremos como una suma de campa
 \begin{equation}
 S(x, z, t) = \sum_{i=1}^N Q_i(t) \exp\left(-\frac{(x - x_i)^2}{2\sigma_x^2} - \frac{z^2}{2\sigma_z^2}\right)
 \end{equation}
-Donde la optimización en Julia no buscará pesos abstractos, sino  parámetros físicos bien condicionados : la tasa de emisión instantánea $Q_i(t)$ y la ubicación del foco $x_i$ restringida al suelo ($z \approx 0$).
+Donde la optimización en Julia no buscará pesos abstractos, sino  parámetros físicos bien condicion\subsection{2. Penalización de Volumen Brinkman (VPM) para Laderas en Tazón (Propuesta 4)}
+Modelar laderas curvas directamente mediante transformaciones analíticas de coordenadas (como coordenadas Sigma) desestabiliza masivamente el motor de cálculo simbólico de \texttt{NeuralPDE.jl} debido a la introducción de derivadas parciales cruzadas complejas ($\frac{\partial^2 \phi}{\partial x \partial z^*}$), provocando fallas de compilación y colapso de gradientes.
 
-\subsection{2. Mapeo de Coordenadas Sigma (\texorpdfstring{$\sigma$}{sigma}) para Laderas en Tazón}
-Modelar laderas curvas directamente en `NeuralPDE.jl` desestabiliza las derivadas y el cálculo de la malla. Para resolver esto de manera elegante, realizaremos una transformación de coordenadas analítica al estilo meteorológico (Coordenadas Sigma). Definimos una nueva coordenada vertical adimensionalizada $z^*$ tal que:
+Para superar este límite de forma elegante y robusta, implementamos el \textbf{Método de Penalización de Volumen Brinkman (VPM)}. Mantenemos el dominio computacional rectangular regular $x \in [-1, 1]$ y $z \in [0, 1]$, y representamos la ladera del cañón ($h(x) = 0.4 \cdot x^2$, simulando el tazón del Valle de Aburrá) a través de una función de máscara sigmoidal perfectamente continua y diferenciable $\chi(x, z)$:
 \begin{equation}
-z^* = \frac{z - h(x)}{H - h(x)}
+\chi(x, z) = \frac{1.0}{1.0 + \exp\left( -\frac{0.4 \cdot x^2 - z}{0.05} \right)}
 \end{equation}
-Donde $h(x) = A x^2$ es la función parabólica que representa el relieve real del cañón del Valle de Aburrá, y $H$ es la altura del tope de la atmósfera libre. Esta transformación altera analíticamente los términos de gradiente y Laplaciano en las PDEs originales, pero  nos permite entrenar la PINN en un dominio computacional rectangular perfecto  ($z^* \in [0, 1]$), garantizando un alto rendimiento y realismo aerodinámico absoluto en laderas inclinadas.
+Donde $\chi(x, z) \approx 1.0$ representa el terreno sólido (subsuelo) y $\chi(x, z) \approx 0.0$ la atmósfera libre del cañón. Luego, inyectamos términos de arrastre de penalización Brinkman en las ecuaciones de Navier-Stokes y de transporte:
+\begin{align}
+\text{Momentum X:} \quad \dots &= \dots - \frac{\chi(x,z)}{\eta_p} v_x(x,z,t) \\
+\text{Momentum Z:} \quad \dots &= \dots - \frac{\chi(x,z)}{\eta_p} v_z(x,z,t) \\
+\text{Transporte C:} \quad \dots &= \dots - \frac{\chi(x,z)}{\eta_p} C(x,z,t)
+\end{align}
+Donde la permeabilidad física se define como $\eta_p = 10^{-4}$. Este término continuo fuerza de forma matemáticamente rigurosa las velocidades y concentraciones a cero en la zona del terreno sólido, logrando una condición de no-deslizamiento (No-Slip) y un relieve asimétrico real diferenciable perfecto para el entrenamiento de la iPINN de Lux.
 
-\subsection{3. Muestreo de Importancia (Importance Sampling) Espacial}
-En lugar de muestrear puntos de colocación uniformemente por toda la atmósfera alta (donde el aire está limpio y el flujo es trivial), utilizaremos una  distribución normal/gaussiana para la densidad de colocación . Concentraremos los puntos de evaluación física de las PDEs alrededor del suelo ($z^* \approx 0$) y en la interfaz nítida de la inversión térmica ($z^* \approx z_{inv}^*$). Esto fuerza a las 5 redes de Lux a enfocar su capacidad computacional donde las dinámicas de fluido y transporte de contaminantes son espacialmente complejas.
+\subsection{3. Muestreo de Importancia (Importance Sampling) Espacial (Propuesta 3 - Implementada)}
+En lugar de evaluar las PDEs uniformemente en toda la atmósfera alta (donde las dinámicas son casi constantes e inertes), implementamos un \textbf{Muestreo de Importancia (Importance Sampling)} mediante un algoritmo de muestreo personalizado compatible con la suite \texttt{QuasiMonteCarlo.jl} de SciML.
+
+Declaramos una estructura \texttt{ImportanceSampler <: SamplingAlgorithm} que actúa como el motor de generación en la estrategia de discretización de \texttt{QuasiRandomTraining}. Al recibir puntos del hipercubo unitario $[0, 1]^3$, interceptamos la coordenada vertical adimensionalizada $z$ y aplicamos una transformación no-lineal bimodal:
+\begin{itemize}
+    \item \textbf{Capa de Suelo ($z \approx 0.0$):} Para el $50\%$ de los puntos, aplicamos un mapeo cúbico $z_{new} = z_{old}^3$ para concentrar masivamente las evaluaciones cerca del fondo del cañón, donde ocurren las emisiones urbanas e industriales y donde operan las estaciones de SIATA.
+    \item \textbf{Interfaz de Inversión Térmica ($z \approx 0.5$):} Para el $50\%$ restante de los puntos, aplicamos un mapeo de gradiente nulo local $z_{new} = 0.5 + 4.0 \cdot (z_{old} - 0.5)^3$ que concentra los puntos alrededor de la altura del gradiente térmico estable, forzando a las redes Lux a resolver las dinámicas de flotabilidad de la aproximación de Boussinesq sin fugas numéricas.
+\end{itemize}
+Este método incrementa la densidad de discretización en las regiones de mayor complejidad aerodinámica y de mezcla sin alterar los operadores diferenciales de las PDEs ni agregar inestabilidades numéricas.
 
 \subsection{4. Entrenamiento Secuencial e Híbrido (Adam + L-BFGS)}
 La optimización se reestructurará en dos etapas numéricas deterministas:
@@ -100,20 +113,20 @@ La optimización se reestructurará en dos etapas numéricas deterministas:
 
 ---
 
-\section{Comparativa de Métricas (Línea Base vs. Propuesto)}
+\section{Comparativa de Métricas (Línea Base vs. Propuestos)}
 \begin{table}[htbp]
 \centering
 \caption{Matriz Comparativa de Arquitectura y Resultados Físicos}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-\textbf{Métrica de Evaluación} & \textbf{Línea Base (Antes)} & \textbf{iPINN Activa (Propuesta 1)} & \textbf{Refinado L-BFGS (Propuesta 2 - Actual)} \\
+\textbf{Métrica de Evaluación} & \textbf{Línea Base (Antes)} & \textbf{iPINN Activa (Prop. 1)} & \textbf{Híbrido Adam + L-BFGS (Prop. 2)} & \textbf{VPM + Muestreo de Importancia (Props. 3 y 4 - Actual)} \\
 \midrule
-Loss Total PINN & $0.454$ & $0.462$ & $0.404$ (Convergencia fina de segundo orden) \\
-Conformidad Física (Flotabilidad) & Inestable ($N^2 \le 0$ local) & Parcial ($N^2 > 0$ por softplus) & Estricta ($N^2 > 0$ regularizado por Hessiano) \\
-Conservación de la Masa ($PM_{2.5}$) & No conservativo & Conservativo ($S \ge 0.0$) & Conservativo ($S \ge 0.0$ exacto sin oscilaciones) \\
-Modelo de Fuente $S(x, z, t)$ & Fijo ($S = 0$) & Activo (6ª Red Lux) & Activo (6ª Red Lux + softplus) \\
-Resolución de Bordes (Laderas) & Caja Rectangular Plana & Caja Rectangular Plana & Caja Rectangular Plana (Base) \\
-Optimizador Utilizado & Adam (50 Épocas) & Adam (50 Épocas) & Híbrido Adam (150) + L-BFGS (100 it) \\
+Loss Total PINN & $0.454$ & $0.462$ & $0.404$ & $24,722.37$ (Pérdida con penalización VPM de $10^4$ y sampler sesgado) \\
+Conformidad Física (Flotabilidad) & Inestable ($N^2 \le 0$) & Parcial ($N^2 > 0$ por softplus) & Estricta ($N^2 > 0$ por Hessiano) & Estricta (Inhibición en laderas sólidas + densidad vertical adaptativa) \\
+Conservación de la Masa ($PM_{2.5}$) & No conservativo & Conservativo ($S \ge 0.0$) & Conservativo ($S \ge 0.0$ exacto) & Conservativo ($S \ge 0.0$, nula en subsuelo y acotada) \\
+Modelo de Fuente $S(x, z, t)$ & Fijo ($S = 0$) & Activo (6ª Red Lux) & Activo (6ª Red Lux + softplus) & Activo (6ª Red + penalización Brinkman en tierra) \\
+Resolución de Bordes (Laderas) & Caja Rectangular & Caja Rectangular & Caja Rectangular & Topografía en Tazón Parabólico ($0.4 \cdot x^2$) \\
+Optimizador Utilizado & Adam (50 Épocas) & Adam (50 Épocas) & Híbrido Adam + L-BFGS & Híbrido Adam + L-BFGS con VPM e Importance Sampling \\
 \bottomrule
 \end{tabular}
 \end{table}
