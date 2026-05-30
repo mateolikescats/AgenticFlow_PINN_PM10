@@ -101,22 +101,20 @@ Construye 5 redes neuronales independientes (o múltiples cabezas) para aproxima
 las variables dependientes [u, T, vx, vz, P].
 """
 function build_multi_pinn()
-    # 3 Entradas: x, z, t. 1 Salida por cada variable.
-    # Usamos redes separadas para evitar interferencia de gradientes entre variables físicas
-    # de distintas escalas (ej. Presión vs Temperatura).
+    # Redes más anchas (64 neuronas) para modelar adecuadamente las 5 PDEs acopladas y el relieve
     make_net = () -> Lux.Chain(
-        Lux.Dense(3, 32, Lux.tanh),
-        Lux.Dense(32, 32, Lux.tanh),
-        Lux.Dense(32, 32, Lux.tanh),
-        Lux.Dense(32, 1)
+        Lux.Dense(3, 64, Lux.tanh),
+        Lux.Dense(64, 64, Lux.tanh),
+        Lux.Dense(64, 64, Lux.tanh),
+        Lux.Dense(64, 1)
     )
     
     # Red de emisión S con activación final softplus para garantizar S >= 0.0 (físicamente consistente)
     net_s = Lux.Chain(
-        Lux.Dense(3, 32, Lux.tanh),
-        Lux.Dense(32, 32, Lux.tanh),
-        Lux.Dense(32, 32, Lux.tanh),
-        Lux.Dense(32, 1, Lux.softplus)
+        Lux.Dense(3, 64, Lux.tanh),
+        Lux.Dense(64, 64, Lux.tanh),
+        Lux.Dense(64, 64, Lux.tanh),
+        Lux.Dense(64, 1, Lux.softplus)
     )
     
     return [make_net(), make_net(), make_net(), make_net(), make_net(), net_s]

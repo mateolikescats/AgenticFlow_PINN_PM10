@@ -58,18 +58,37 @@ function train_interpolative(data_path="datos_siata_temporal.json")
     u_data = Float64[d["u"] for d in data]
     T_data = Float64[d["T"] for d in data]
 
-    # 3. Definir la función de pérdida adicional (Ajuste a los datos de SIATA)
-    # phi es una tupla de funciones, una por cada red: [phi_u, phi_T, phi_vx, phi_vz, phi_P, phi_S]
-    # theta es una tupla/ComponentArray de los pesos de cada red
+    # Separación por estaciones físicas (evita fuga de datos espacial)
+    Random.seed!(42) # Semilla fija para reproducibilidad
+    unique_stations = unique([d["id"] for d in data])
+    n_stations = length(unique_stations)
+    shuffled_stations = shuffle(unique_stations)
+    
+    # 80% train, 20% validation
+    split_idx = floor(Int, 0.8 * n_stations)
+    train_stations = shuffled_stations[1:split_idx]
+    val_stations = shuffled_stations[split_idx+1:end]
+    
+    train_indices = findall(d -> d["id"] in train_stations, data)
+    val_indices = findall(d -> d["id"] in val_stations, data)
+    
+    println("📊 Total de estaciones: $n_stations")
+    println("👉 Estaciones de entrenamiento (80%): $(length(train_stations)) (puntos: $(length(train_indices)))")
+    println("👉 Estaciones de validación (20%): $(length(val_stations)) (puntos: $(length(val_indices)))")
+
+    # 3. Definir la función de pérdida adicional (Ajuste a los datos de SIATA de entrenamiento)
     function additional_loss(phi, θ, p)
         loss_u = 0.0
         loss_T = 0.0
-        n_points = length(u_data)
+        n_points = length(train_indices)
+        if n_points == 0
+            return 0.0
+        end
         
         phi_u = phi[1] # Red para la concentración u
         phi_T = phi[2] # Red para la temperatura T
         
-        for i in 1:n_points
+        for i in train_indices
             coords = [x_data[i], z_data[i], t_data[i]]
             pred_u = phi_u(coords, θ.depvar.u)[1]
             pred_T = phi_T(coords, θ.depvar.T)[1]
@@ -77,7 +96,30 @@ function train_interpolative(data_path="datos_siata_temporal.json")
             loss_u += (pred_u - u_data[i])^2
             loss_T += (pred_T - T_data[i])^2
         end
-        return (loss_u + loss_T) / max(1, n_points)
+        return (loss_u + loss_T) / n_points
+    end
+
+    # Función para calcular la pérdida de validación en datos no vistos
+    function eval_validation_loss(phi, θ)
+        loss_u = 0.0
+        loss_T = 0.0
+        n_points = length(val_indices)
+        if n_points == 0
+            return 0.0
+        end
+        
+        phi_u = phi[1]
+        phi_T = phi[2]
+        
+        for i in val_indices
+            coords = [x_data[i], z_data[i], t_data[i]]
+            pred_u = phi_u(coords, θ.depvar.u)[1]
+            pred_T = phi_T(coords, θ.depvar.T)[1]
+            
+            loss_u += (pred_u - u_data[i])^2
+            loss_T += (pred_T - T_data[i])^2
+        end
+        return (loss_u + loss_T) / n_points
     end
 
     # 4. Estrategia de Discretización (Physics-Informed) con Muestreo de Importancia (Propuesta 3)
@@ -94,7 +136,12 @@ function train_interpolative(data_path="datos_siata_temporal.json")
     epoch_count = 0
     callback_adam = function (p, l, args...)
         epoch_count += 1
-        println("[EPOCH_LOG] Epoch: $epoch_count | Loss: $l")
+        val_loss = 0.0
+        try
+            val_loss = eval_validation_loss(discretization.phi, p.u)
+        catch e
+        end
+        println("[EPOCH_LOG] Epoch: $epoch_count | Loss: $l | Val Loss: $val_loss")
         return false
     end
 
@@ -105,7 +152,12 @@ function train_interpolative(data_path="datos_siata_temporal.json")
     # Fase 2: Refinamiento de precisión con L-BFGS (Optimizador de segundo orden)
     callback_lbfgs = function (p, l, args...)
         epoch_count += 1
-        println("[EPOCH_LOG] Epoch: $epoch_count | Loss: $l | Stage: L-BFGS")
+        val_loss = 0.0
+        try
+            val_loss = eval_validation_loss(discretization.phi, p.u)
+        catch e
+        end
+        println("[EPOCH_LOG] Epoch: $epoch_count | Loss: $l | Val Loss: $val_loss | Stage: L-BFGS")
         return false
     end
 
