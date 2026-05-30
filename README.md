@@ -29,10 +29,12 @@ El proyecto se está desarrollando de forma iterativa y "hueso a hueso" para gar
 - **Acoplamiento Boussinesq (Termodinámica)**: Simulación bidimensional transversal $(x, z)$ que acopla 5 ecuaciones diferenciales parciales: masa/continuidad, momentum X y Z (con flotabilidad térmica de Boussinesq $\beta g (T - T_{ref})$), transporte de calor y transporte de contaminantes ($u$) con tasa de emisión $S(x, z, t)$ y penalización Brinkman.
 - **Topografía como Restricción**: Se aplica una máscara de relieve parabólica $z = 0.4x^2$ acoplada a una penalización Darcy-Brinkman masiva para forzar a que las velocidades y concentraciones sean cero en el subsuelo.
 - **Muestreo de Importancia (`ImportanceSampler`)**: Algoritmo Quasi-Monte Carlo personalizado que sobremuestrea zonas cerca del suelo ($z \approx 0$) y en la inversión térmica ($z \approx 0.5$), proyectando automáticamente puntos subterráneos al área atmosférica activa (`AdvectionDiffusion.jl`).
-- **Redes Neuronales Múltiples**: Se emplean **6 arquitecturas MLP independientes en Lux.jl** para evitar la interferencia de gradientes. La sexta red (emisión $S$) cuenta con una función de activación final `softplus` para garantizar que la emisión de contaminantes sea físicamente positiva ($S \geq 0$).
-- **Entrenamiento en Dos Etapas (`train_interpolative.jl`)**:
-  1.  **Fase 1 (Global)**: Optimización inicial rápida con `Adam` usando hiperparámetros inyectados por JSON.
-  2.  **Fase 2 (Refinamiento)**: Optimización de precisión milimétrica mediante el resolvedor de segundo orden `L-BFGS`.
+- **Redes Neuronales Múltiples (Lux.jl)**: Se emplean **6 arquitecturas MLP independientes** con capas ocultas ampliadas a **64 neuronas** para modelar adecuadamente las 5 PDEs acopladas y el relieve, evitando la interferencia de gradientes. La sexta red (emisión $S$) cuenta con una función de activación final `softplus` para garantizar que la emisión de contaminantes sea físicamente positiva ($S \geq 0$).
+- **Entrenamiento en Dos Etapas e Integridad Científica (`train_interpolative.jl`)**:
+  - **Mitigación de Fuga de Datos (Spatial Data Leakage)**: División de datos basada en estaciones físicas completas (**80% entrenamiento / 20% validación**) para asegurar que la capacidad de generalización se evalúe sobre estaciones no vistas.
+  - **Monitoreo de Pérdida de Validación**: Computación y registro de la pérdida de validación en tiempo real en los logs (`Val Loss`) durante cada época de las dos fases de optimización:
+    1.  **Fase 1 (Global)**: Optimización inicial rápida con `Adam` usando hiperparámetros inyectados por JSON.
+    2.  **Fase 2 (Refinamiento)**: Optimización de precisión milimétrica mediante el resolvedor de segundo orden `L-BFGS`.
 
 ### ✅ Fase 3: Arquitectura Agéntica y MLOps (Python - CrewAI)
 **Estado:** `Completado y Operativo`
