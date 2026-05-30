@@ -19,7 +19,7 @@ llm = LLM(
 
 # 2. Definición de Agentes
 reaction_validator = Agent(
-    role="Thermodynamics Validator",
+    role="Thermodynamics Validator", 
     goal="Validar que los campos físicos de velocidad y temperatura de la PINN sean físicamente consistentes.",
     backstory=(
         "Eres un analista termodinámico exigente. "
@@ -37,7 +37,7 @@ forensic_investigator = Agent(
     backstory=(
         "Eres un detective ambiental y experto en geomática. "
         "Utilizas herramientas de clustering GMM para identificar nubes de contaminación y "
-        "luego consultas bases de datos geoespaciales del Valle de Aburrá para cruzar las coordenadas "
+        "luego consultas bases de datos geoespaciales del Valle de Aburrá para cruzar las coordenadas"
         "matemáticas con autopistas de alto tráfico o zonas industriales pesadas específicas."
     ),
     verbose=True,

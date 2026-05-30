@@ -1,5 +1,7 @@
 using Pkg
-Pkg.add("DomainSets")
+Pkg.activate(".")
+Pkg.instantiate()
 include("src/pinn/AdvectionDiffusion.jl")
 using .AdvectionDiffusion
 println("SUCCESS")
+

@@ -36,6 +36,7 @@ function get_boussinesq_pde_system()
     beta_g = 1.0   # Gravedad * Coeficiente de expansión térmica (Adimensional)
     T_ref = 0.0    # Temperatura de referencia (ej. tope de la capa límite)
     
+    
     # Máscara Brinkman de relieve (Tazón del Valle de Aburrá)
     # h(x) = 0.4 * x^2, con suavizado delta = 0.05
     chi = 1.0 / (1.0 + exp(-((0.4 * x^2 - z) / 0.05)))
