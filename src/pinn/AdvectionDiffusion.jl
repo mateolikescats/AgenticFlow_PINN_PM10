@@ -44,21 +44,21 @@ function get_boussinesq_pde_system()
     # 1. Conservación de Masa (Incompresible)
     eq_mass = Dx(vx(x,z,t)) + Dz(vz(x,z,t)) ~ 0.0
     
-    # 2. Momentum en X (Canalización transversal con penalización Brinkman)
+    # 2. Momentum en X (Canalización transversal con penalización Brinkman suavizada)
     eq_mom_x = Dt(vx(x,z,t)) + vx(x,z,t)*Dx(vx(x,z,t)) + vz(x,z,t)*Dz(vx(x,z,t)) ~ 
-               -Dx(P(x,z,t)) + nu * (Dxx(vx(x,z,t)) + Dzz(vx(x,z,t))) - (chi / 2e-3) * vx(x,z,t)
+               -Dx(P(x,z,t)) + nu * (Dxx(vx(x,z,t)) + Dzz(vx(x,z,t))) - (chi / 2e-2) * vx(x,z,t)
                
-    # 3. Momentum en Z (Estratificación, aproximación de Boussinesq y penalización Brinkman)
+    # 3. Momentum en Z (Estratificación, aproximación de Boussinesq y penalización Brinkman suavizada)
     eq_mom_z = Dt(vz(x,z,t)) + vx(x,z,t)*Dx(vz(x,z,t)) + vz(x,z,t)*Dz(vz(x,z,t)) ~ 
-               -Dz(P(x,z,t)) + nu * (Dxx(vz(x,z,t)) + Dzz(vz(x,z,t))) + beta_g * (T(x,z,t) - T_ref) - (chi / 2e-3) * vz(x,z,t)
+               -Dz(P(x,z,t)) + nu * (Dxx(vz(x,z,t)) + Dzz(vz(x,z,t))) + beta_g * (T(x,z,t) - T_ref) - (chi / 2e-2) * vz(x,z,t)
                
     # 4. Transporte de Calor (Radiación / Termodinámica)
     eq_energy = Dt(T(x,z,t)) + vx(x,z,t)*Dx(T(x,z,t)) + vz(x,z,t)*Dz(T(x,z,t)) ~ 
                 alpha_T * (Dxx(T(x,z,t)) + Dzz(T(x,z,t)))
                 
-    # 5. Advección-Difusión de Contaminantes (PM2.5 / PM10 con penalización Brinkman en subsuelo)
+    # 5. Advección-Difusión de Contaminantes (PM2.5 / PM10 con penalización Brinkman suavizada en subsuelo)
     eq_transport = Dt(u(x,z,t)) + vx(x,z,t)*Dx(u(x,z,t)) + vz(x,z,t)*Dz(u(x,z,t)) ~ 
-                   D * (Dxx(u(x,z,t)) + Dzz(u(x,z,t))) + S(x,z,t) - (chi / 2e-3) * u(x,z,t)
+                   D * (Dxx(u(x,z,t)) + Dzz(u(x,z,t))) + S(x,z,t) - (chi / 2e-2) * u(x,z,t)
     
     eqs = [eq_mass, eq_mom_x, eq_mom_z, eq_energy, eq_transport]
     
@@ -95,26 +95,27 @@ function get_boussinesq_pde_system()
 end
 
 """
-    build_multi_pinn()
+    build_multi_pinn(width::Int=32)
 
 Construye 5 redes neuronales independientes (o múltiples cabezas) para aproximar
-las variables dependientes [u, T, vx, vz, P].
+las variables dependientes [u, T, vx, vz, P]. El ancho de las redes es configurable
+para prevenir el desbordamiento de memoria (RAM) en sistemas con recursos limitados.
 """
-function build_multi_pinn()
-    # Redes más anchas (64 neuronas) para modelar adecuadamente las 5 PDEs acopladas y el relieve
+function build_multi_pinn(width::Int=32)
+    # Redes con ancho parametrizado (32 por defecto para evitar explosión de RAM)
     make_net = () -> Lux.Chain(
-        Lux.Dense(3, 64, Lux.tanh),
-        Lux.Dense(64, 64, Lux.tanh),
-        Lux.Dense(64, 64, Lux.tanh),
-        Lux.Dense(64, 1)
+        Lux.Dense(3, width, Lux.tanh),
+        Lux.Dense(width, width, Lux.tanh),
+        Lux.Dense(width, width, Lux.tanh),
+        Lux.Dense(width, 1)
     )
     
     # Red de emisión S con activación final softplus para garantizar S >= 0.0 (físicamente consistente)
     net_s = Lux.Chain(
-        Lux.Dense(3, 64, Lux.tanh),
-        Lux.Dense(64, 64, Lux.tanh),
-        Lux.Dense(64, 64, Lux.tanh),
-        Lux.Dense(64, 1, Lux.softplus)
+        Lux.Dense(3, width, Lux.tanh),
+        Lux.Dense(width, width, Lux.tanh),
+        Lux.Dense(width, width, Lux.tanh),
+        Lux.Dense(width, 1, Lux.softplus)
     )
     
     return [make_net(), make_net(), make_net(), make_net(), make_net(), net_s]

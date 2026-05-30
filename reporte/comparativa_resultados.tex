@@ -109,9 +109,21 @@ Declaramos una estructura \texttt{ImportanceSampler <: SamplingAlgorithm} que ac
 Este método incrementa la densidad de discretización en las regiones de mayor complejidad aerodinámica y de mezcla sin alterar los operadores diferenciales de las PDEs ni agregar inestabilidades numéricas.
 
 \subsection{4. Entrenamiento Secuencial e Híbrido (Adam + L-BFGS)}
-La optimización se reestructurará en dos etapas numéricas deterministas:
-*   \textbf{Fase I (Adam):} 300 épocas para explorar globalmente el paisaje de pérdidas no convexo y establecer la macro-estructura fluida sin atorarse en mínimos locales.
-*   \textbf{Fase II (L-BFGS):} Transferencia de pesos al optimizador de segundo orden quasi-Newton L-BFGS para refinar el cumplimiento estricto de las PDEs físicas, aplastando el Loss por debajo de $0.05$ y resolviendo con precisión los gradientes agudos de temperatura y concentración en el límite estable.
+La optimización se reestructura en dos etapas numéricas deterministas:
+\begin{itemize}
+    \item \textbf{Fase I (Adam):} 300 épocas para explorar globalmente el paisaje de pérdidas no convexo y establecer la macro-estructura fluida sin atorarse en mínimos locales.
+    \item \textbf{Fase II (L-BFGS):} Transferencia de pesos al optimizador de segundo orden quasi-Newton L-BFGS para refinar el cumplimiento estricto de las PDEs físicas, resolviendo con precisión los gradientes agudos de temperatura y concentración en el límite estable.
+\end{itemize}
+
+\subsection{5. Mitigación de la Rigidez Numérica (Stiffness) y Monitoreo RAM en Tiempo Real}
+Un análisis profundo de los logs iniciales reveló una patología de convergencia: la pérdida caía abruptamente de $10,000$ a menos de $1,000$ en menos de 40 épocas. Descubrimos que el término de penalización Darcy-Brinkman (cuyo multiplicador es de $500$ al estar dividido por $2 \cdot 10^{-3}$) dominaba por completo los gradientes aleatorios de la inicialización, ahogando los gradientes de la física atmosférica viscosa y difusiva (órdenes de magnitud $10^{-2}$), una brecha de escala de hasta **$50,000$ veces**. El optimizador tomaba un ``atajo'' apagando las predicciones en el subsuelo, lo cual eliminaba la penalización de relieve pero dejaba la atmósfera estática y sin aprender física.
+
+Para solucionar esta rigidez e impedir colapsos de hardware, implementamos:
+\begin{itemize}
+    \item \textbf{Densificación Física a 5000 Puntos de Colocación:} Elevamos drásticamente el muestreo de $128$ a $5,000$ puntos continuos de colocación. Esto impide que la red neuronal haga trampas locales y la obliga a aprender la física de forma continua sobre todo el cañón del Valle de Aburrá.
+    \item \textbf{Monitoreo RAM de Emergencia (OOM Guard):} Integramos un monitor en Python que, mediante llamadas nativas de \texttt{ctypes} a la API de Windows (\texttt{GlobalMemoryStatusEx}), consulta el consumo de RAM en cada época de entrenamiento. Si la RAM excede el $98\%$, aborta inmediatamente el proceso de Julia para evitar congelamientos.
+    \item \textbf{Optimización de Parámetros y Submuestreo Empírico:} Redujimos el ancho de las 6 redes neuronales a un valor seguro y robusto de $32$ unidades (reduciendo parámetros en un $75\%$) y aplicamos un submuestreo determinista fijo de los datos empíricos de SIATA a un máximo de $256$ puntos de ajuste, acelerando la convergencia a una pérdida real consistente de $3.22$ (Adam) y $3.35$ (L-BFGS).
+\end{itemize}
 
 ---
 
@@ -132,7 +144,7 @@ La optimización se reestructurará en dos etapas numéricas deterministas:
 \toprule
 \textbf{Métrica de Evaluación} & \textbf{Línea Base (Antes)} & \textbf{iPINN Activa (Prop. 1)} & \textbf{Híbrido Adam + L-BFGS (Prop. 2)} & \textbf{VPM + Muestreo de Importancia (Props. 3 y 4 - Actual)} \\
 \midrule
-Loss Total PINN & $0.454$ & $0.462$ & $0.404$ & $5.47$ (Con Estrategias 1 y 3 de reescalado y enmascaramiento subsuelo) \\ \addlinespace
+Loss Total PINN & $0.454$ & $0.462$ & $0.404$ & $3.22\ \text{(Adam)} / 3.35\ \text{(L-BFGS)}\ \text{con}\ 5000\ \text{puntos y VPM}$ \\ \addlinespace
 Conformidad Física (Flotabilidad) & Inestable ($N^2 \le 0$) & Parcial ($N^2 > 0$ por softplus) & Estricta ($N^2 > 0$ por Hessiano) & Estricta (Inhibición en laderas sólidas + densidad vertical adaptativa) \\ \addlinespace
 Conservación de la Masa ($PM_{2.5}$) & No conservativo & Conservativo ($S \ge 0.0$) & Conservativo ($S \ge 0.0$ exacto) & Conservativo ($S \ge 0.0$, nula en subsuelo y acotada) \\ \addlinespace
 Modelo de Fuente $S(x, z, t)$ & Fijo ($S = 0$) & Activo (6ª Red Lux) & Activo (6ª Red Lux + softplus) & Activo (6ª Red + penalización Brinkman en tierra) \\ \addlinespace

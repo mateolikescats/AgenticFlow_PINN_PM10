@@ -41,8 +41,15 @@ class BayesianOptimizer:
         
         print(f"\n--- Evaluando Trial: LR={lr:.5f} (10^{lr_log:.2f}), Epochs={epochs_int} ---")
         
-        # Escribir configuración temporal (fijando 300 it. de L-BFGS para excelente precisión)
-        config = {"epochs": epochs_int, "learning_rate": lr, "lbfgs_iters": 300}
+        # Escribir configuración temporal (fijando 300 it. de L-BFGS para excelente precisión, y optimizaciones de RAM)
+        config = {
+            "epochs": epochs_int,
+            "learning_rate": lr,
+            "lbfgs_iters": 300,
+            "network_width": 32,
+            "max_data_points": 256,
+            "collocation_points": 5000
+        }
         with open("pinn_config.json", "w") as f:
             json.dump(config, f)
             
@@ -159,7 +166,14 @@ class BayesianOptimizer:
         print("==========================================\n")
         
         # Escribir la mejor configuración final para el entrenamiento definitivo
-        best_config = {"epochs": best_epochs_int, "learning_rate": best_lr, "lbfgs_iters": 300}
+        best_config = {
+            "epochs": best_epochs_int,
+            "learning_rate": best_lr,
+            "lbfgs_iters": 300,
+            "network_width": 32,
+            "max_data_points": 256,
+            "collocation_points": 5000
+        }
         with open("pinn_config.json", "w") as f:
             json.dump(best_config, f)
             

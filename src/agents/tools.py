@@ -56,6 +56,53 @@ class ExecuteJuliaPINNTool(BaseTool):
         except Exception as e:
             print(f"[MLOps Warning] No se pudo generar la gráfica de pérdida: {e}", flush=True)
 
+    def _get_ram_usage_percent(self) -> float:
+        import platform
+        if platform.system() == "Windows":
+            try:
+                import ctypes
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+                stat = MEMORYSTATUSEX()
+                stat.dwLength = ctypes.sizeof(stat)
+                ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(stat))
+                return float(stat.dwMemoryLoad)
+            except Exception:
+                pass
+        elif platform.system() == "Linux":
+            try:
+                with open('/proc/meminfo', 'r') as f:
+                    lines = f.readlines()
+                mem_total = 0
+                mem_available = 0
+                for line in lines:
+                    if 'MemTotal' in line:
+                        mem_total = int(line.split()[1])
+                    elif 'MemAvailable' in line:
+                        mem_available = int(line.split()[1])
+                if mem_total > 0:
+                    return 100.0 * (1.0 - mem_available / mem_total)
+            except Exception:
+                pass
+
+        try:
+            import psutil
+            return float(psutil.virtual_memory().percent)
+        except ImportError:
+            pass
+
+        return 0.0
+
     def _run(self, epochs: int, learning_rate: float) -> str:
         memory_file = "mlops_memory.json"
         history = []
@@ -109,7 +156,13 @@ class ExecuteJuliaPINNTool(BaseTool):
 
         while retry_count < max_retries:
             # Escribir configuración temporal para que Julia la lea
-            config = {"epochs": current_epochs, "learning_rate": current_lr}
+            config = {
+                "epochs": current_epochs,
+                "learning_rate": current_lr,
+                "network_width": 32,
+                "max_data_points": 256,
+                "collocation_points": 5000
+            }
             with open("pinn_config.json", "w") as f:
                 json.dump(config, f)
                 
@@ -134,6 +187,7 @@ class ExecuteJuliaPINNTool(BaseTool):
                 last_losses = []
                 has_nan = False
                 has_stalled = False
+                has_oom = False
                 stdout_captured = []
                 
                 # Bucle de lectura de salida en tiempo real
@@ -145,6 +199,14 @@ class ExecuteJuliaPINNTool(BaseTool):
                     stdout_captured.append(line)
                     stripped_line = line.strip()
                     print(f"[Julia]: {stripped_line}", flush=True)
+                    
+                    # Control de memoria RAM preventivo (> 98%)
+                    ram_load = self._get_ram_usage_percent()
+                    if ram_load >= 98.0:
+                        has_oom = True
+                        print(f"\n[CRITICAL] [MLOps Control] ¡OOM PREVENTIVO! La RAM del sistema ({ram_load:.1f}%) ha superado el 98%. Deteniendo proceso de Julia de inmediato para evitar congelamiento...", flush=True)
+                        process.terminate()
+                        break
                     
                     # Parsear logs de época
                     if "[EPOCH_LOG]" in stripped_line:
@@ -180,7 +242,11 @@ class ExecuteJuliaPINNTool(BaseTool):
                 process.wait()
                 
                 # Evaluar resultado del intento
-                if has_nan:
+                if has_oom:
+                    execution_summary.append(f"[FAIL] Intento {retry_count + 1} abortado preventivamente para evitar OOM (RAM >= 98%).")
+                    retry_count = max_retries  # Cancelar intentos adicionales para no saturar
+                    break
+                elif has_nan:
                     execution_summary.append(f"[FAIL] Intento {retry_count + 1} falló por colapso a NaN.")
                     current_lr /= 2.0  # Disminuir learning rate
                     retry_count += 1
