@@ -106,6 +106,8 @@ class ExecuteJuliaPINNTool(BaseTool):
                 execution_summary.append(msg)
 
         started_lr = current_lr
+        has_nan = False
+        has_stalled = False
 
         while retry_count < max_retries:
             # Escribir configuración temporal para que Julia la lea

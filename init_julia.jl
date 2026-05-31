@@ -9,6 +9,7 @@ Pkg.add([
     "OptimizationOptimisers", 
     "JSON", 
     "ComponentArrays",
-    "JLD2"
+    "JLD2",
+    "DomainSets"
 ])
 Pkg.precompile()

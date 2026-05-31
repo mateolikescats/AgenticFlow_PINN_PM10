@@ -16,6 +16,7 @@ class SiataOfficialNetwork:
     def __init__(self):
         # Endpoints de Datos Abiertos
         self.endpoint_pm25 = "https://datosabiertos.metropol.gov.co/sites/default/files/uploaded_resources/Datos_SIATA_Aire_pm25.json"
+        self.endpoint_wind = "https://datosabiertos.metropol.gov.co/sites/default/files/uploaded_resources/Datos_SIATA_Vaisala_viento.json"
         
         self.session = requests.Session()
         self.session.headers.update({
@@ -103,10 +104,69 @@ class SiataOfficialNetwork:
         df = pd.DataFrame(parsed)
         return self.filter_pm25(df)
 
+    def process_wind_data(self, raw_data: List[Dict]) -> pd.DataFrame:
+        import numpy as np
+        import datetime
+        parsed = []
+        for st in raw_data:
+            lat = float(st.get('latitud', 0))
+            lon = float(st.get('longitud', 0))
+            st_id = st.get('codigoSerial', st.get('id', 'unknown'))
+            datos_historicos = st.get('datos', [])
+            
+            if not datos_historicos:
+                # Fallback si no tiene arreglo "datos"
+                try:
+                    speed = float(st.get('velocidadViento', st.get('velocidad', st.get('valor', 0.0))))
+                    direction = float(st.get('direccionViento', st.get('direccion', 0.0)))
+                    rad = np.radians(direction)
+                    parsed.append({
+                        'id': st_id,
+                        'latitud': lat,
+                        'longitud': lon,
+                        'vx': speed * np.sin(rad),
+                        'vy': speed * np.cos(rad),
+                        'timestamp': st.get('fecha_hora', 0)
+                    })
+                except (ValueError, TypeError):
+                    pass
+                continue
+                
+            for dp in datos_historicos:
+                try:
+                    fecha_str = dp.get('fecha', '')
+                    if fecha_str:
+                        dt = datetime.datetime.strptime(fecha_str, "%Y-%m-%d %H:%M:%S")
+                        timestamp = dt.timestamp()
+                    else:
+                        timestamp = 0
+                    
+                    # Extraer velocidad y dirección de forma robusta
+                    speed = float(dp.get('velocidadViento', dp.get('velocidad', dp.get('valor', 0.0))))
+                    direction = float(dp.get('direccionViento', dp.get('direccion', 0.0)))
+                    
+                    rad = np.radians(direction)
+                    parsed.append({
+                        'id': st_id,
+                        'latitud': lat,
+                        'longitud': lon,
+                        'vx': speed * np.sin(rad),
+                        'vy': speed * np.cos(rad),
+                        'timestamp': timestamp
+                    })
+                except (ValueError, TypeError, Exception):
+                    continue
+                    
+        df = pd.DataFrame(parsed)
+        # Filtrar velocidades de viento anómalas (mayores a 50 m/s)
+        if not df.empty and 'vx' in df.columns:
+            df = df[(df['vx'].abs() < 50.0) & (df['vy'].abs() < 50.0)]
+        return df
+
     def run_pipeline(self):
         print("Iniciando extracción de datos SIATA (Red Oficial)...")
         
-        # PM2.5 Oficial
+        # 1. PM2.5 Oficial
         raw_pm25 = self.fetch_data(self.endpoint_pm25)
         if raw_pm25:
             df_pm25 = self.process_pm25_data(raw_pm25)
@@ -114,6 +174,28 @@ class SiataOfficialNetwork:
             print(f"[OK] Guardados {len(df_pm25)} sensores de PM2.5 Oficial.")
         else:
             print("[WARN] No se pudo obtener la red de Calidad de Aire oficial.")
+            
+        # 2. Viento Oficial (Meteorología) con URLs de fallback
+        endpoints_viento = [
+            self.endpoint_wind,
+            "https://datosabiertos.metropol.gov.co/sites/default/files/uploaded_resources/Datos_SIATA_Aire_viento.json",
+            "https://datosabiertos.metropol.gov.co/sites/default/files/uploaded_resources/Datos_SIATA_Vaisala_Viento.json",
+            "https://datosabiertos.metropol.gov.co/sites/default/files/uploaded_resources/Datos_SIATA_Aire_meteorologia.json"
+        ]
+        
+        raw_wind = None
+        for url in endpoints_viento:
+            print(f"Intentando descargar viento desde: {url}...")
+            raw_wind = self.fetch_data(url)
+            if raw_wind:
+                break
+                
+        if raw_wind:
+            df_wind = self.process_wind_data(raw_wind)
+            df_wind.to_json("datos_oficiales_viento.json", orient='records', indent=4)
+            print(f"[OK] Guardados {len(df_wind)} sensores de viento Vaisala.")
+        else:
+            print("[WARN] No se pudo obtener la red de viento oficial en ninguno de los endpoints. Se usará el fallback de viento en Julia.")
 
 if __name__ == "__main__":
     scraper = SiataOfficialNetwork()

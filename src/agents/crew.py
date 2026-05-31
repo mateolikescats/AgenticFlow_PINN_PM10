@@ -1,6 +1,16 @@
 import os
+import sys
+
+# Asegurar que el directorio del script esté en el path para imports locales
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from crewai import Agent, Task, Crew, Process, LLM
-from tools import SpatiotemporalClusteringTool, GeospatialValleQueryTool, WriteLatexForensicReportTool
+from tools import (
+    SpatiotemporalClusteringTool,
+    GeospatialValleQueryTool,
+    WriteLatexForensicReportTool,
+    ExecuteJuliaPINNTool
+)
 
 # Cargar variables de entorno desde un archivo .env si existe
 if os.path.exists(".env"):
@@ -28,6 +38,7 @@ reaction_validator = Agent(
     ),
     verbose=True,
     allow_delegation=False,
+    tools=[ExecuteJuliaPINNTool()],
     llm=llm
 )
 

@@ -201,7 +201,7 @@ function train_interpolative(data_path::String="datos_siata_temporal.json")
         JSON.print(f, Dict("loss" => res2.objective, "info" => "Pesos exportados en formato binario JLD2."))
     end
 
-    # Exportar los pesos reales de las 6 redes usando JLD2 para la posterior Inferencia
+    # Exportar los pesos reales de las 7 redes usando JLD2 para la posterior Inferencia
     @save "modelo_pinn.jld2" theta = res2.u
 
     println("¡Entrenamiento y modelo exportados exitosamente!")
