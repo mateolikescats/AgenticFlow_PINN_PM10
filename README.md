@@ -7,8 +7,8 @@ Este repositorio contiene el código fuente para un proyecto de investigación e
 El Valle de Aburrá presenta una topografía compleja (un cañón estrecho) y condiciones meteorológicas variables que dificultaron la identificación precisa de los "hotspots" o fuentes de emisión de contaminación del aire. Al tratar de identificar estas fuentes utilizando exclusivamente los datos de los sensores, nos enfrentamos a un problema matemático "mal planteado" (*ill-posed*).
 
 Para solucionar esto, integramos:
-1. **Datos de Alta Densidad**: Red de "Ciudadanos Científicos" del SIATA.
-2. **Restricción Física**: Ecuación de Advección-Difusión-Reacción (ADR).
+1. **Datos de Alta Densidad**: Red Oficial de Calidad del Aire (Datos Abiertos - SIATA).
+2. **Restricción Física**: Ecuación de Navier-Stokes y Advección-Difusión-Reacción (ADR) en 3D.
 3. **Optimización Agéntica**: Modelos de Lenguaje (LLMs) orquestando el entrenamiento y validando la física.
 
 ## 🏗️ Arquitectura y Estado del Proyecto (Curriculum Learning)
@@ -17,14 +17,14 @@ El proyecto se está desarrollando de forma iterativa y "hueso a hueso" para gar
 
 ### ✅ Fase 1: Fundamentos Geoespaciales y Datos (Python)
 **Estado:** `Completado`
-- **Ingeniería de Datos**: Cliente automatizado para la Red de Ciudadanos Científicos de SIATA (`siata_scraper.py`).
-- **Filtrado de Ruido**: Algoritmo `IsolationForest` para detectar y descartar lecturas anómalas por descalibración de sensores *low-cost* (umbral de contaminación de $5\%$).
-- **Restricción de Dominio ($\Omega$)**: Bounding box topológico del Valle de Aburrá (Lat $[6.00, 6.45]$, Lon $[-75.70, -75.30]$) para evitar distorsiones con coordenadas ficticias (`aburra_domain.py`).
-- **Preprocesamiento Adimensional**: Mapeo estricto del espacio a $[-1, 1]$ y tiempo a $[0, 1]$ para mitigar gradientes numéricos patológicos (`preprocessing.py`).
-- **Mapeador Visual**: Generador de mapas interactivos HTML (`mapa_validacion.html`) basado en `folium` para verificar los límites físicos (`map_generator.py`).
+- **Ingeniería de Datos**: Extracción directa e histórica de la **Red Oficial de Calidad de Aire** vía el portal de Datos Abiertos de Medellín (`siata_scraper.py`).
+- **Filtrado de Ruido**: Algoritmo `IsolationForest` para detectar y descartar lecturas anómalas.
+- **Restricción de Dominio ($\Omega$)**: Bounding box topológico del Valle de Aburrá (Lat $[6.00, 6.45]$, Lon $[-75.70, -75.30]$).
+- **Mapeo Topográfico Real en 3D**: Uso de la **Open-Elevation API** para extraer la altitud precisa sobre el nivel del mar para cada estación y escalar la dimensión $z$, reemplazando asunciones planas (`preprocessing.py`).
+- **Preprocesamiento Adimensional**: Mapeo estricto del espacio a $[-1, 1]$ (coordenadas x, y, z) y tiempo a $[0, 1]$ para estabilidad matemática (`preprocessing.py`).
 
 ### ✅ Fase 2: Motor Físico PINN (Julia)
-**Estado:** `Completado y Optimizado`
+**Estado:** `Completado y Optimizado a 3D`
 - **Framework**: `NeuralPDE.jl`, `ModelingToolkit.jl` y `Lux.jl` por su alto rendimiento científico.
 - **Acoplamiento Boussinesq (Termodinámica)**: Simulación bidimensional transversal $(x, z)$ que acopla 5 ecuaciones diferenciales parciales: masa/continuidad, momentum X y Z (con flotabilidad térmica de Boussinesq $\beta g (T - T_{ref})$), transporte de calor y transporte de contaminantes ($u$) con tasa de emisión $S(x, z, t)$ y penalización Brinkman.
 - **Topografía como Restricción**: Se aplica una máscara de relieve parabólica $z = 0.4x^2$ acoplada a una penalización Darcy-Brinkman masiva para forzar a que las velocidades y concentraciones sean cero en el subsuelo.
@@ -35,6 +35,15 @@ El proyecto se está desarrollando de forma iterativa y "hueso a hueso" para gar
   - **Monitoreo de Pérdida de Validación**: Computación y registro de la pérdida de validación en tiempo real en los logs (`Val Loss`) durante cada época de las dos fases de optimización:
     1.  **Fase 1 (Global)**: Optimización inicial rápida con `Adam` usando hiperparámetros inyectados por JSON.
     2.  **Fase 2 (Refinamiento)**: Optimización de precisión milimétrica mediante el resolvedor de segundo orden `L-BFGS`.
+
+- **Modelo 3D y Acoplamiento Boussinesq**: Simulación tridimensional espaciotemporal $(x, y, z, t)$ que acopla 6 ecuaciones diferenciales parciales: Continuidad (Masa), Momentum X, Y, y Z (con flotabilidad térmica $\beta g (T - T_{ref})$), Ecuación de Energía y Transporte de PM2.5 ($u$) incluyendo una velocidad de sedimentación gravitacional ($v_s$).
+- **Topografía y Tapa de Inversión Térmica**: Se aplica una condición de frontera estricta $\partial_z u = 0$ en el techo del valle para emular el confinamiento real por inversión térmica, impidiendo que la contaminación escape.
+- **Muestreo de Importancia (`ImportanceSampler`)**: Algoritmo Quasi-Monte Carlo personalizado para sesgar muestras físicas hacia la superficie topográfica real.
+- **Redes Neuronales Múltiples**: Se emplean **7 arquitecturas MLP independientes en Lux.jl** para evitar la interferencia de gradientes (u, T, vx, vy, vz, P, S). La red fuente ($S$) cuenta con una función de activación `softplus` para asegurar $S \geq 0$.
+- **Entrenamiento en Dos Etapas (`train_interpolative.jl`)**:
+  1.  **Fase 1 (Global)**: Optimización inicial rápida con `Adam` usando hiperparámetros inyectados por JSON.
+  2.  **Fase 2 (Refinamiento)**: Optimización de precisión milimétrica mediante el resolvedor de segundo orden `L-BFGS`.
+
 
 ### ✅ Fase 3: Arquitectura Agéntica y MLOps (Python - CrewAI)
 **Estado:** `Completado y Operativo`

@@ -18,12 +18,26 @@ Project.toml.backup
 .vscode/
 .idea/
 
-# Datos crudos y pesos exportados (opcional, pero buena práctica si son pesados)
-pesos_pinn.json
-scratch_siata.py
-init_julia.jl
-
 # Api
-
 .env
 
+# Archivos temporales de desarrollo
+*.md
+!README.md
+readpf
+read_pdf.py
+scratch_siata.py
+
+# Archivos de datos espaciotemporales pesados
+datos_meteorologicos_viento.json
+datos_oficiales_pm25.json
+datos_pinn_pm25.json
+datos_siata_temporal.json
+datos_siata.json
+
+# Modelos y reportes
+reporte/
+*.tex
+*.jld2
+pesos_pinn.json
+pesos_pinn_boussinesq.json
