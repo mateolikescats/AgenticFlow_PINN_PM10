@@ -25,5 +25,14 @@
         "final_lr": 0.00125,
         "status": "stalled",
         "final_loss": null
+    },
+    {
+        "timestamp": "2026-05-30T21:18:25.551505",
+        "epochs": 10000,
+        "requested_lr": 0.0025,
+        "started_lr": 0.0025,
+        "final_lr": 0.0025,
+        "status": "cancelled",
+        "final_loss": 2.000197
     }
 ]
