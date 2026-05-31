@@ -17,18 +17,17 @@ using Random
 
 function load_data(filepath)
     if !isfile(filepath)
-        println("⚠️ Archivo de datos no encontrado: $filepath. Usando datos ficticios 2D (x, z).")
-        # Generar datos ficticios (x, z, t, u, T)
-        # Asumiendo z=0 es el nivel del suelo donde están los sensores de SIATA
+        println("⚠️ Archivo de datos no encontrado: $filepath. Usando datos ficticios 3D acoplados (x, y, z, t, u, T, vx, vy).")
         return [
-            Dict("x" => 0.0, "z" => 0.0, "t" => 0.5, "u" => 0.5, "T" => -0.5),
-            Dict("x" => 0.5, "z" => 0.0, "t" => 0.8, "u" => 0.2, "T" => -0.8)
+            Dict("id" => "C-001", "x" => -0.5, "y" => -0.5, "z" => 0.1, "t" => 0.0, "u" => 0.3, "T" => -0.8, "vx" => 0.2, "vy" => -0.1, "elevacion_real" => 1550.0, "pm25" => 30.0),
+            Dict("id" => "C-002", "x" => 0.0, "y" => 0.0, "z" => 0.0, "t" => 0.5, "u" => 0.5, "T" => -0.5, "vx" => 0.1, "vy" => 0.1, "elevacion_real" => 1500.0, "pm25" => 50.0),
+            Dict("id" => "C-003", "x" => 0.5, "y" => 0.5, "z" => 0.2, "t" => 1.0, "u" => 0.2, "T" => -0.2, "vx" => -0.1, "vy" => 0.3, "elevacion_real" => 1700.0, "pm25" => 20.0)
         ]
     end
     return JSON.parsefile(filepath)
 end
 
-function train_interpolative(data_path::String="datos_pinn_pm25.json")
+function train_interpolative(data_path::String="datos_siata_temporal.json")
     println("==== Iniciando Fase Interpolativa PINN Termodinámica ====")
 
     # Leer hiperparámetros si existen (inyectados por el Agente Python)
@@ -53,13 +52,55 @@ function train_interpolative(data_path::String="datos_pinn_pm25.json")
 
     # 2. Cargar datos empíricos (PM2.5)
     data = load_data(data_path)
-    # Se asume que el preprocesamiento ya mapeó longitud a 'x' y latitud a 'y' en el rango [-1, 1]
-    x_data = Float64[get(d, "x", 0.0) for d in data]
-    y_data = Float64[get(d, "y", 0.0) for d in data]
-    z_data = Float64[get(d, "z", 0.0) for d in data]
-    t_data = Float64[get(d, "t", 0.0) for d in data]
-    u_data = Float64[get(d, "u", 0.0) for d in data]
-    T_data = Float64[get(d, "T", 0.0) for d in data]
+    
+    # Mitigación de Spatial Data Leakage: División 80/20 basada en estaciones físicas
+    station_ids = unique(String[string(get(d, "id", "unknown")) for d in data])
+    Random.seed!(42)
+    shuffled_ids = shuffle(station_ids)
+    n_train = max(1, round(Int, 0.8 * length(shuffled_ids)))
+    train_station_ids = shuffled_ids[1:n_train]
+    val_station_ids = shuffled_ids[n_train+1:end]
+
+    train_data = filter(d -> string(get(d, "id", "unknown")) in train_station_ids, data)
+    val_data = filter(d -> string(get(d, "id", "unknown")) in val_station_ids, data)
+    if isempty(val_data) && length(data) > 1
+        n_rows = length(data)
+        n_train_rows = max(1, round(Int, 0.8 * n_rows))
+        train_data = data[1:n_train_rows]
+        val_data = data[n_train_rows+1:end]
+    end
+
+    # Extraer variables de entrenamiento
+    x_data = Float64[get(d, "x", 0.0) for d in train_data]
+    y_data = Float64[get(d, "y", 0.0) for d in train_data]
+    z_data = Float64[get(d, "z", 0.0) for d in train_data]
+    t_data = Float64[get(d, "t", 0.0) for d in train_data]
+    u_data = Float64[get(d, "u", 0.0) for d in train_data]
+    T_data = Float64[get(d, "T", 0.0) for d in train_data]
+
+    # Extraer variables de validación
+    val_x_data = Float64[get(d, "x", 0.0) for d in val_data]
+    val_y_data = Float64[get(d, "y", 0.0) for d in val_data]
+    val_z_data = Float64[get(d, "z", 0.0) for d in val_data]
+    val_t_data = Float64[get(d, "t", 0.0) for d in val_data]
+    val_u_data = Float64[get(d, "u", 0.0) for d in val_data]
+    val_T_data = Float64[get(d, "T", 0.0) for d in val_data]
+
+    # Definir la función de pérdida de validación para la concentración de PM2.5 (phi[1])
+    eval_validation_loss = (phi, θ) -> begin
+        loss_val = 0.0
+        n_points = length(val_u_data)
+        if n_points == 0
+            return 0.0
+        end
+        phi_u = phi[1]
+        for i in 1:n_points
+            coords = [val_x_data[i], val_y_data[i], val_z_data[i], val_t_data[i]]
+            pred_u = phi_u(coords, θ.depvar.u)[1]
+            loss_val += (pred_u - val_u_data[i])^2
+        end
+        return loss_val / n_points
+    end
 
     # Datos empíricos (Meteorología - Viento)
     meteo_data = load_data("datos_meteorologicos_viento.json")

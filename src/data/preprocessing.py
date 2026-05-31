@@ -114,6 +114,12 @@ class PINNPreprocessor:
         # Eliminar NaNs
         df_scaled = df_scaled.dropna(subset=['latitud', 'longitud', 'timestamp', 'pm25'])
         
+        # Manejo de DataFrame vacío para evitar errores de .apply en Pandas
+        if df_scaled.empty:
+            for col in ['x_scaled', 'y_scaled', 'elevacion_real', 'z_scaled', 't_scaled', 'u_scaled', 'x', 'y', 'z', 't', 'u']:
+                df_scaled[col] = pd.Series(dtype='float64')
+            return df_scaled
+        
         # Aplicar escalamientos
         spatial_scaled = df_scaled.apply(
             lambda row: self.scale_spatial(row['latitud'], row['longitud']), axis=1
@@ -173,11 +179,11 @@ if __name__ == "__main__":
     df_pinn = preprocessor.process_dataframe(df_raw)
     
     # Guardar en un nuevo archivo solo con las columnas procesadas para la PINN
-    # (id, x, y, z, t, u, elevacion_real, pm25_original)
-    cols_to_save = ['id', 'x', 'y', 'z', 't', 'u', 'elevacion_real', 'pm25']
+    # (id, x, y, z, t, u, elevacion_real, pm25_original, latitud, longitud)
+    cols_to_save = ['id', 'x', 'y', 'z', 't', 'u', 'elevacion_real', 'pm25', 'latitud', 'longitud']
     df_final = df_pinn[cols_to_save].copy()
     
-    output_file = "datos_pinn_pm25.json"
+    output_file = "datos_siata_temporal.json"
     df_final.to_json(output_file, orient='records', indent=4)
     print(f"Preprocesamiento exitoso. Datos listos guardados en '{output_file}'.")
 
