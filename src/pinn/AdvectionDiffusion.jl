@@ -57,7 +57,7 @@ function get_boussinesq_pde_system()
                 
     # 5. Advección-Difusión de Contaminantes (PM2.5 / PM10 con penalización Brinkman en subsuelo)
     eq_transport = Dt(u(x,z,t)) + vx(x,z,t)*Dx(u(x,z,t)) + vz(x,z,t)*Dz(u(x,z,t)) ~ 
-                   D * (Dxx(u(x,z,t)) + Dzz(u(x,z,t))) + S(x,z,t) - (chi / 2e-3) * u(x,z,t)
+                   D * (Dxx(u(x,z,t)) + Dzz(u(x,z,t))) + (1.0 - chi) * S(x,z,t) - (chi / 2e-3) * u(x,z,t)
     
     eqs = [eq_mass, eq_mom_x, eq_mom_z, eq_energy, eq_transport]
     
