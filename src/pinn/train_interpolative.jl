@@ -12,28 +12,28 @@ using OptimizationOptimJL
 using OptimizationOptimisers
 using ComponentArrays
 using JSON
+using JLD2 # Para guardar los pesos reales
 using Random
 
 function load_data(filepath)
     if !isfile(filepath)
-        println("⚠️ Archivo de datos no encontrado: $filepath. Usando datos ficticios 2D (x, z).")
-        # Generar datos ficticios (x, z, t, u, T)
-        # Asumiendo z=0 es el nivel del suelo donde están los sensores de SIATA
+        println("⚠️ Archivo de datos no encontrado: $filepath. Usando datos ficticios 3D acoplados (x, y, z, t, u, T, vx, vy).")
         return [
-            Dict("x" => 0.0, "z" => 0.0, "t" => 0.5, "u" => 0.5, "T" => -0.5),
-            Dict("x" => 0.5, "z" => 0.0, "t" => 0.8, "u" => 0.2, "T" => -0.8)
+            Dict("id" => "C-001", "x" => -0.5, "y" => -0.5, "z" => 0.1, "t" => 0.0, "u" => 0.3, "T" => -0.8, "vx" => 0.2, "vy" => -0.1, "elevacion_real" => 1550.0, "pm25" => 30.0),
+            Dict("id" => "C-002", "x" => 0.0, "y" => 0.0, "z" => 0.0, "t" => 0.5, "u" => 0.5, "T" => -0.5, "vx" => 0.1, "vy" => 0.1, "elevacion_real" => 1500.0, "pm25" => 50.0),
+            Dict("id" => "C-003", "x" => 0.5, "y" => 0.5, "z" => 0.2, "t" => 1.0, "u" => 0.2, "T" => -0.2, "vx" => -0.1, "vy" => 0.3, "elevacion_real" => 1700.0, "pm25" => 20.0)
         ]
     end
     return JSON.parsefile(filepath)
 end
 
-function train_interpolative(data_path="datos_siata_temporal.json")
+function train_interpolative(data_path::String="datos_siata_temporal.json")
     println("==== Iniciando Fase Interpolativa PINN Termodinámica ====")
-    
+
     # Leer hiperparámetros si existen (inyectados por el Agente Python)
-    epochs = 100
-    learning_rate = 0.01
-    lbfgs_iters = 300
+    epochs = 10000
+    learning_rate = 0.025
+    lbfgs_iters = 3000
     if isfile("pinn_config.json")
         try
             config = JSON.parsefile("pinn_config.json")
@@ -45,133 +45,298 @@ function train_interpolative(data_path="datos_siata_temporal.json")
             println("Error leyendo pinn_config.json, usando valores por defecto.")
         end
     end
-    
-    # 1. Obtener la ecuación Boussinesq y arquitecturas (6 redes)
-    pdesys, (x, z, t, u, T, vx, vz, P, S) = get_boussinesq_pde_system()
+
+    # 1. Obtener la ecuación Boussinesq y arquitecturas 3D (7 redes)
+    pdesys, (x, y, z, t, u, T, vx, vy, vz, P, S) = get_boussinesq_pde_system()
     chains = build_multi_pinn()
-    
-    # 2. Cargar datos empíricos
+
+    # 2. Cargar datos empíricos (PM2.5)
     data = load_data(data_path)
-    x_data = Float64[d["x"] for d in data]
-    z_data = Float64[d["z"] for d in data]
-    t_data = Float64[d["t"] for d in data]
-    u_data = Float64[d["u"] for d in data]
-    T_data = Float64[d["T"] for d in data]
+    
+    # Mitigación de Spatial Data Leakage: División 80/20 basada en estaciones físicas
+    station_ids = unique(String[string(get(d, "id", "unknown")) for d in data])
+    Random.seed!(42)
+    shuffled_ids = shuffle(station_ids)
+    n_train = max(1, round(Int, 0.8 * length(shuffled_ids)))
+    train_station_ids = shuffled_ids[1:n_train]
+    val_station_ids = shuffled_ids[n_train+1:end]
 
-    # Separación por estaciones físicas (evita fuga de datos espacial)
-    Random.seed!(42) # Semilla fija para reproducibilidad
-    unique_stations = unique([d["id"] for d in data])
-    n_stations = length(unique_stations)
-    shuffled_stations = shuffle(unique_stations)
-    
-    # 80% train, 20% validation
-    split_idx = floor(Int, 0.8 * n_stations)
-    train_stations = shuffled_stations[1:split_idx]
-    val_stations = shuffled_stations[split_idx+1:end]
-    
-    train_indices = findall(d -> d["id"] in train_stations, data)
-    val_indices = findall(d -> d["id"] in val_stations, data)
-    
-    println("📊 Total de estaciones: $n_stations")
-    println("👉 Estaciones de entrenamiento (80%): $(length(train_stations)) (puntos: $(length(train_indices)))")
-    println("👉 Estaciones de validación (20%): $(length(val_stations)) (puntos: $(length(val_indices)))")
-
-    # 3. Definir la función de pérdida adicional (Ajuste a los datos de SIATA de entrenamiento)
-    function additional_loss(phi, θ, p)
-        loss_u = 0.0
-        loss_T = 0.0
-        n_points = length(train_indices)
-        if n_points == 0
-            return 0.0
-        end
-        
-        phi_u = phi[1] # Red para la concentración u
-        phi_T = phi[2] # Red para la temperatura T
-        
-        for i in train_indices
-            coords = [x_data[i], z_data[i], t_data[i]]
-            pred_u = phi_u(coords, θ.depvar.u)[1]
-            pred_T = phi_T(coords, θ.depvar.T)[1]
-            
-            loss_u += (pred_u - u_data[i])^2
-            loss_T += (pred_T - T_data[i])^2
-        end
-        return (loss_u + loss_T) / n_points
+    train_data = filter(d -> string(get(d, "id", "unknown")) in train_station_ids, data)
+    val_data = filter(d -> string(get(d, "id", "unknown")) in val_station_ids, data)
+    if isempty(val_data) && length(data) > 1
+        n_rows = length(data)
+        n_train_rows = max(1, round(Int, 0.8 * n_rows))
+        train_data = data[1:n_train_rows]
+        val_data = data[n_train_rows+1:end]
     end
 
-    # Función para calcular la pérdida de validación en datos no vistos
-    function eval_validation_loss(phi, θ)
-        loss_u = 0.0
-        loss_T = 0.0
-        n_points = length(val_indices)
-        if n_points == 0
-            return 0.0
+    # Optimización: Reducir tamaño de datos para evitar bucles gigantescos en entrenamiento
+    if length(train_data) > 5000
+        Random.seed!(42)
+        train_data = shuffle(train_data)[1:5000]
+    end
+    if length(val_data) > 1000
+        Random.seed!(42)
+        val_data = shuffle(val_data)[1:1000]
+    end
+
+    # Extraer variables de entrenamiento
+    x_data = Float64[get(d, "x", 0.0) for d in train_data]
+    y_data = Float64[get(d, "y", 0.0) for d in train_data]
+    z_data = Float64[get(d, "z", 0.0) for d in train_data]
+    t_data = Float64[get(d, "t", 0.0) for d in train_data]
+    u_data = Float64[get(d, "u", 0.0) for d in train_data]
+    T_data = Float64[get(d, "T", 0.0) for d in train_data]
+
+    # Crear matrices de coordenadas para evaluación vectorizada (Lux espera [4, N])
+    train_coords = hcat([[x_data[i], y_data[i], z_data[i], t_data[i]] for i in 1:length(x_data)]...)
+    u_data_vec = reshape(u_data, 1, :)
+    T_data_vec = reshape(T_data, 1, :)
+
+    # Extraer variables de validación
+    val_x_data = Float64[get(d, "x", 0.0) for d in val_data]
+    val_y_data = Float64[get(d, "y", 0.0) for d in val_data]
+    val_z_data = Float64[get(d, "z", 0.0) for d in val_data]
+    val_t_data = Float64[get(d, "t", 0.0) for d in val_data]
+    val_u_data = Float64[get(d, "u", 0.0) for d in val_data]
+    val_T_data = Float64[get(d, "T", 0.0) for d in val_data]
+
+    val_coords = hcat([[val_x_data[i], val_y_data[i], val_z_data[i], val_t_data[i]] for i in 1:length(val_x_data)]...)
+    val_u_data_vec = reshape(val_u_data, 1, :)
+    val_T_data_vec = reshape(val_T_data, 1, :)
+
+    # 3. Cargar y split de Datos de Viento (Meteorología)
+    meteo_data_all = load_data("datos_meteorologicos_viento.json")
+    
+    # Mitigación de Spatial Data Leakage (Viento): División 80/20 basada en estaciones meteorológicas
+    wind_station_ids = unique(String[string(get(d, "id", "unknown")) for d in meteo_data_all])
+    Random.seed!(42)
+    shuffled_wind_ids = shuffle(wind_station_ids)
+    n_wind_train = max(1, round(Int, 0.8 * length(shuffled_wind_ids)))
+    train_wind_station_ids = shuffled_wind_ids[1:n_wind_train]
+    val_wind_station_ids = shuffled_wind_ids[n_wind_train+1:end]
+
+    train_wind_data = filter(d -> string(get(d, "id", "unknown")) in train_wind_station_ids, meteo_data_all)
+    val_wind_data = filter(d -> string(get(d, "id", "unknown")) in val_wind_station_ids, meteo_data_all)
+    if isempty(val_wind_data) && length(meteo_data_all) > 1
+        n_wind_rows = length(meteo_data_all)
+        n_wind_train_rows = max(1, round(Int, 0.8 * n_wind_rows))
+        train_wind_data = meteo_data_all[1:n_wind_train_rows]
+        val_wind_data = meteo_data_all[n_wind_train_rows+1:end]
+    end
+
+    # Extraer variables de entrenamiento de viento
+    x_meteo = Float64[get(d, "x", 0.0) for d in train_wind_data]
+    y_meteo = Float64[get(d, "y", 0.0) for d in train_wind_data]
+    z_meteo = Float64[get(d, "z", 0.0) for d in train_wind_data]
+    t_meteo = Float64[get(d, "t", 0.0) for d in train_wind_data]
+    vx_meteo = Float64[get(d, "vx", 0.0) for d in train_wind_data]
+    vy_meteo = Float64[get(d, "vy", 0.0) for d in train_wind_data]
+
+    meteo_coords = hcat([[x_meteo[i], y_meteo[i], z_meteo[i], t_meteo[i]] for i in 1:length(x_meteo)]...)
+    vx_meteo_vec = reshape(vx_meteo, 1, :)
+    vy_meteo_vec = reshape(vy_meteo, 1, :)
+
+    # Extraer variables de validación de viento
+    val_x_meteo = Float64[get(d, "x", 0.0) for d in val_wind_data]
+    val_y_meteo = Float64[get(d, "y", 0.0) for d in val_wind_data]
+    val_z_meteo = Float64[get(d, "z", 0.0) for d in val_wind_data]
+    val_t_meteo = Float64[get(d, "t", 0.0) for d in val_wind_data]
+    val_vx_meteo = Float64[get(d, "vx", 0.0) for d in val_wind_data]
+    val_vy_meteo = Float64[get(d, "vy", 0.0) for d in val_wind_data]
+
+    val_meteo_coords = hcat([[val_x_meteo[i], val_y_meteo[i], val_z_meteo[i], val_t_meteo[i]] for i in 1:length(val_x_meteo)]...)
+    val_vx_meteo_vec = reshape(val_vx_meteo, 1, :)
+    val_vy_meteo_vec = reshape(val_vy_meteo, 1, :)
+
+    # Definir la función de pérdida de validación multivariable (retorna pérdida agregada y desglose)
+    eval_validation_loss = (phi, θ) -> begin
+        # 1. Validación de PM2.5
+        loss_val_u = 0.0
+        if length(val_u_data) > 0
+            phi_u = phi[1]
+            pred_u = phi_u(val_coords, θ.depvar.u)
+            loss_val_u = sum((pred_u .- val_u_data_vec).^2) / length(val_u_data)
         end
-        
-        phi_u = phi[1]
-        phi_T = phi[2]
-        
-        for i in val_indices
-            coords = [x_data[i], z_data[i], t_data[i]]
-            pred_u = phi_u(coords, θ.depvar.u)[1]
-            pred_T = phi_T(coords, θ.depvar.T)[1]
-            
-            loss_u += (pred_u - u_data[i])^2
-            loss_T += (pred_T - T_data[i])^2
+
+        # 2. Validación de Temperatura
+        loss_val_T = 0.0
+        if length(val_T_data) > 0
+            phi_T = phi[2]
+            pred_T = phi_T(val_coords, θ.depvar.T)
+            loss_val_T = sum((pred_T .- val_T_data_vec).^2) / length(val_T_data)
         end
-        return (loss_u + loss_T) / n_points
+
+        # 3. Validación de Viento (Meteorología)
+        loss_val_v = 0.0
+        if length(val_vx_meteo) > 0
+            phi_vx = phi[3]
+            phi_vy = phi[4]
+            pred_vx = phi_vx(val_meteo_coords, θ.depvar.vx)
+            pred_vy = phi_vy(val_meteo_coords, θ.depvar.vy)
+            loss_val_v = (sum((pred_vx .- val_vx_meteo_vec).^2) + sum((pred_vy .- val_vy_meteo_vec).^2)) / length(val_vx_meteo)
+        end
+
+        total_val_loss = loss_val_u + loss_val_T + loss_val_v
+        return total_val_loss, loss_val_u, loss_val_T, loss_val_v
+    end
+
+    # 3. Función de Pérdida Adicional (Data Loss) vectorizada
+    # phi es una tupla de funciones, una por cada red: [phi_u, phi_T, phi_vx, phi_vy, phi_vz, phi_P, phi_S]
+    additional_loss = (phi, θ, p) -> begin
+        phi_u = phi[1]  # Red para la concentración u
+        phi_T = phi[2]  # Red para la temperatura T
+        phi_vx = phi[3] # Red para viento transversal
+        phi_vy = phi[4] # Red para viento longitudinal
+
+        # Pérdida de PM2.5 y Temperatura vectorizada en una sola operación de matriz
+        pred_u = phi_u(train_coords, θ.depvar.u)
+        pred_T = phi_T(train_coords, θ.depvar.T)
+
+        loss_u = sum((pred_u .- u_data_vec).^2) / length(u_data)
+        loss_T = sum((pred_T .- T_data_vec).^2) / length(T_data)
+
+        # Pérdida de Asimilación Meteorológica vectorizada
+        pred_vx = phi_vx(meteo_coords, θ.depvar.vx)
+        pred_vy = phi_vy(meteo_coords, θ.depvar.vy)
+
+        loss_v = (sum((pred_vx .- vx_meteo_vec).^2) + sum((pred_vy .- vy_meteo_vec).^2)) / length(vx_meteo)
+
+        return loss_u + loss_T + loss_v
     end
 
     # 4. Estrategia de Discretización (Physics-Informed) con Muestreo de Importancia (Propuesta 3)
-    strategy = QuasiRandomTraining(10000; sampling_alg = ImportanceSampler())
-    
-    # 5. Configurar el discretizador de NeuralPDE
-    discretization = PhysicsInformedNN(chains, strategy; additional_loss=additional_loss)
+    strategy = QuasiRandomTraining(128; sampling_alg=ImportanceSampler())
 
-    # 6. Convertir PDESystem al problema de Optimización
+    # 5. Configurar el discretizador de NeuralPDE usando Pesos Adaptativos (Adaptive Weights)
+    # Esto equilibra dinámicamente las pérdidas de datos (u, T) vs los residuales físicos (Navier-Stokes)
+    adaptive_strategy = GradientScaleAdaptiveLoss(100) # Actualiza los pesos cada 100 epochs
+
+    discretization = PhysicsInformedNN(chains, strategy;
+        additional_loss=additional_loss,
+        weight_strategy=adaptive_strategy)
+
+    # 6. Convertir PDESystem al problema de Optimización y obtener representación simbólica
     println("Compilando el problema Boussinesq (esto tomará tiempo por las 5 ecuaciones)...")
     prob = discretize(pdesys, discretization)
+    println("Compilando representación simbólica para extracción de pérdidas...")
+    sym_prob = NeuralPDE.symbolic_discretize(pdesys, discretization)
+
+    # 6b. Manejo de checkpoints para reanudación de entrenamiento
+    checkpoint_file = abspath("scratch/modelo_pinn_checkpoint.jld2")
+    u0 = prob.u0
+    epoch_count = 0
+    if isfile(checkpoint_file)
+        println("🔄 Encontrado archivo de checkpoint en $checkpoint_file. Reanudando entrenamiento...")
+        try
+            @load checkpoint_file theta epoch
+            u0 = theta
+            epoch_count = epoch
+            println("✅ Pesos y época ($epoch_count) cargados exitosamente.")
+        catch e
+            println("⚠️ Error cargando checkpoint: ", e)
+        end
+    else
+        println("🆕 No se encontró checkpoint. Iniciando desde parámetros aleatorios.")
+    end
+    prob = Optimization.remake(prob, u0=u0)
+
+    # Crear/limpiar el archivo de historial de pérdidas (solo si no hay checkpoint)
+    hist_file = abspath("scratch/historial_perdidas.txt")
+    if epoch_count == 0
+        try
+            open(hist_file, "w") do f
+                write(f, "epoch,total_loss,pde_loss,bc_loss,data_loss,val_loss,val_u,val_T,val_v,stage\n")
+            end
+        catch e
+            println("⚠️ No se pudo crear scratch/historial_perdidas.txt: ", e)
+        end
+    end
 
     # 7. Ciclo de Entrenamiento
-    epoch_count = 0
+    
+    # Función auxiliar para evaluar y registrar pérdidas
+    log_losses = (epoch, theta, l, stage; force=false) -> begin
+        if force || epoch == 1 || epoch % 50 == 0
+            val_loss, val_u, val_T, val_v = 0.0, 0.0, 0.0, 0.0
+            try
+                val_loss, val_u, val_T, val_v = eval_validation_loss(discretization.phi, theta)
+            catch e
+            end
+            
+            pde_loss = 0.0
+            bc_loss = 0.0
+            try
+                pde_loss = sum([f(theta) for f in sym_prob.loss_functions.pde_loss_functions])
+                bc_loss = sum([f(theta) for f in sym_prob.loss_functions.bc_loss_functions])
+            catch e
+            end
+            
+            data_loss = 0.0
+            try
+                data_loss = additional_loss(discretization.phi, theta, nothing)
+            catch e
+            end
+            
+            try
+                open(hist_file, "a") do f
+                    write(f, "$epoch,$l,$pde_loss,$bc_loss,$data_loss,$val_loss,$val_u,$val_T,$val_v,$stage\n")
+                end
+            catch e
+                println("⚠️ Error escribiendo historial: ", e)
+            end
+
+            # Guardar checkpoint cada 5000 épocas
+            if !force && epoch % 5000 == 0
+                try
+                    @save checkpoint_file theta epoch
+                    println("[CHECKPOINT] Checkpoint guardado con éxito en la época $epoch.")
+                catch e
+                    println("⚠️ Error al guardar checkpoint: ", e)
+                end
+            end
+            
+            println("[EPOCH_LOG] Epoch: $epoch | Loss: $l | Val Loss: $val_loss (u: $val_u, T: $val_T, v: $val_v) | PDE: $pde_loss | Data: $data_loss | Stage: $stage")
+        end
+    end
+
     callback_adam = function (p, l, args...)
         epoch_count += 1
-        val_loss = 0.0
-        try
-            val_loss = eval_validation_loss(discretization.phi, p.u)
-        catch e
-        end
-        println("[EPOCH_LOG] Epoch: $epoch_count | Loss: $l | Val Loss: $val_loss")
+        log_losses(epoch_count, p.u, l, "Adam")
         return false
     end
 
     println("Fase 1: Entrenando con Adam (LR=$learning_rate)...")
-    res1 = Optimization.solve(prob, OptimizationOptimisers.Adam(learning_rate); callback = callback_adam, maxiters=epochs)
+    res1 = Optimization.solve(prob, OptimizationOptimisers.Adam(learning_rate); callback=callback_adam, maxiters=epochs)
     println("Fase 1 terminada. Loss Adam: ", res1.objective)
     
+    # Registrar última época de Adam
+    log_losses(epoch_count, res1.u, res1.objective, "Adam-Final"; force=true)
+
     # Fase 2: Refinamiento de precisión con L-BFGS (Optimizador de segundo orden)
     callback_lbfgs = function (p, l, args...)
         epoch_count += 1
-        val_loss = 0.0
-        try
-            val_loss = eval_validation_loss(discretization.phi, p.u)
-        catch e
-        end
-        println("[EPOCH_LOG] Epoch: $epoch_count | Loss: $l | Val Loss: $val_loss | Stage: L-BFGS")
+        log_losses(epoch_count, p.u, l, "L-BFGS")
         return false
     end
 
     println("Fase 2: Refinando con L-BFGS...")
     prob2 = Optimization.remake(prob, u0=res1.u)
-    res2 = Optimization.solve(prob2, OptimizationOptimJL.LBFGS(); callback = callback_lbfgs, maxiters=lbfgs_iters)
+    res2 = Optimization.solve(prob2, OptimizationOptimJL.LBFGS(); callback=callback_lbfgs, maxiters=lbfgs_iters)
     println("Fase 2 terminada. Loss final L-BFGS: ", res2.objective)
     
-    println("Exportando pesos acoplados...")
+    # Registrar última época de L-BFGS
+    log_losses(epoch_count, res2.u, res2.objective, "L-BFGS-Final"; force=true)
+
+    println("Exportando metadatos y pesos reales acoplados...")
     open("pesos_pinn_boussinesq.json", "w") do f
-        # No guardamos los pesos masivamente en JSON simple para evitar colapsos, guardamos el loss
-        JSON.print(f, Dict("loss" => res2.objective, "info" => "Pesos de 6 redes guardados internamente."))
+        JSON.print(f, Dict("loss" => res2.objective, "info" => "Pesos exportados en formato binario JLD2."))
     end
-    println("¡Entrenamiento exportado exitosamente!")
+
+    # Exportar los pesos reales de las 7 redes usando JLD2 para la posterior Inferencia
+    @save "modelo_pinn.jld2" theta = res2.u
+
+    println("¡Entrenamiento y modelo exportados exitosamente!")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

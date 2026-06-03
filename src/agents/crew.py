@@ -1,6 +1,16 @@
 import os
+import sys
+
+# Asegurar que el directorio del script esté en el path para imports locales
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from crewai import Agent, Task, Crew, Process, LLM
-from tools import SpatiotemporalClusteringTool, GeospatialValleQueryTool, WriteLatexForensicReportTool
+from tools import (
+    SpatiotemporalClusteringTool,
+    GeospatialValleQueryTool,
+    WriteLatexForensicReportTool,
+    ExecuteJuliaPINNTool
+)
 
 # Cargar variables de entorno desde un archivo .env si existe
 if os.path.exists(".env"):
@@ -19,7 +29,7 @@ llm = LLM(
 
 # 2. Definición de Agentes
 reaction_validator = Agent(
-    role="Thermodynamics Validator",
+    role="Thermodynamics Validator", 
     goal="Validar que los campos físicos de velocidad y temperatura de la PINN sean físicamente consistentes.",
     backstory=(
         "Eres un analista termodinámico exigente. "
@@ -28,6 +38,7 @@ reaction_validator = Agent(
     ),
     verbose=True,
     allow_delegation=False,
+    tools=[ExecuteJuliaPINNTool()],
     llm=llm
 )
 
@@ -37,7 +48,7 @@ forensic_investigator = Agent(
     backstory=(
         "Eres un detective ambiental y experto en geomática. "
         "Utilizas herramientas de clustering GMM para identificar nubes de contaminación y "
-        "luego consultas bases de datos geoespaciales del Valle de Aburrá para cruzar las coordenadas "
+        "luego consultas bases de datos geoespaciales del Valle de Aburrá para cruzar las coordenadas"
         "matemáticas con autopistas de alto tráfico o zonas industriales pesadas específicas."
     ),
     verbose=True,

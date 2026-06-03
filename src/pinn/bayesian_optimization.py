@@ -47,8 +47,9 @@ class BayesianOptimizer:
             json.dump(config, f)
             
         try:
-            # Ejecutar entrenamiento en Julia
             julia_path = r"C:\Users\arnod\AppData\Local\Programs\Julia-1.12.6\bin\julia.exe"
+            if not os.path.exists(julia_path):
+                julia_path = "julia"
             result = subprocess.run(
                 [julia_path, "--project=.", "src/pinn/train_interpolative.jl"],
                 capture_output=True,
