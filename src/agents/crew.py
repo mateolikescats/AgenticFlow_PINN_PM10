@@ -9,7 +9,8 @@ from tools import (
     SpatiotemporalClusteringTool,
     GeospatialValleQueryTool,
     WriteLatexForensicReportTool,
-    ExecuteJuliaPINNTool
+    ExecuteJuliaPINNTool,
+    AuditPhysicsTool
 )
 
 # Cargar variables de entorno desde un archivo .env si existe
@@ -38,7 +39,7 @@ reaction_validator = Agent(
     ),
     verbose=True,
     allow_delegation=False,
-    tools=[ExecuteJuliaPINNTool()],
+    tools=[ExecuteJuliaPINNTool(), AuditPhysicsTool()],
     llm=llm
 )
 
@@ -88,11 +89,12 @@ latex_reporter = Agent(
 task_validate_thermodynamics = Task(
     description=(
         "1. Analiza los resultados del entrenamiento físico de la iPINN en laderas parabólicas. \n"
-        "2. Evalúa si la estratificación por inversión térmica es estable (gradiente vertical positivo de temperatura) "
+        "2. Ejecuta la 'Audit Physics Tool' para calcular el Physics Violation Index (PVI) y la divergencia máxima del viento. \n"
+        "3. Evalúa si la estratificación por inversión térmica es estable (gradiente vertical positivo de temperatura) "
         "y si la velocidad vertical está correctamente atenuada cerca de las laderas sólidas.\n"
-        "3. Emite un dictamen termodinámico formal de la simulación física."
+        "4. Emite un dictamen termodinámico formal de la simulación física e incluye las métricas del PVI obtenidas por la herramienta."
     ),
-    expected_output="Un dictamen termodinámico formal detallando la estabilidad física y el confinamiento de contaminantes.",
+    expected_output="Un dictamen termodinámico formal detallando la estabilidad física, el confinamiento de contaminantes y las métricas PVI.",
     agent=reaction_validator
 )
 
