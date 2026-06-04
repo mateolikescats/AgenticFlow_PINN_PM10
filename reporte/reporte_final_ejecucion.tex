@@ -124,13 +124,13 @@ El modelo final demostró una convergencia sumamente robusta. En la Tabla 1 se d
 \toprule
 \textbf{Métrica de Evaluación} & \textbf{Símbolo} & \textbf{Valor Final} \\
 \midrule
-Pérdida Total del Entrenamiento & $L_{total}$ & \textbf{0.0529} \\
-Pérdida Empírica de Datos ($PM_{2.5}$, T) & $L_{Data}$ & \textbf{0.0195} \\
-Pérdida de Validación Espacial (LOSO) & $L_{Val}$ & \textbf{0.0870} \\
-Pérdida de Residuos Físicos de la PDE & $L_{PDE}$ & \textbf{0.0095} \\
-Physics Violation Index (Conservación de Masa) & \textbf{PVI} & \textbf{0.0263} \\
-Divergencia del Viento Máxima Absoluta & $|\nabla \cdot \vec{v}|_{max}$ & \textbf{1.2652} \\
-Rango de Divergencia del Viento & $\nabla \cdot \vec{v}$ & \textbf{[-0.1951, 1.2652]} \\
+Pérdida Total del Entrenamiento & $L_{total}$ & \textbf{0.0480} \\
+Pérdida Empírica de Datos ($PM_{2.5}$, T, Viento) & $L_{Data}$ & \textbf{0.0167} \\
+Pérdida de Validación Espacial (LOSO) & $L_{Val}$ & \textbf{0.1327} \\
+Pérdida de Residuos Físicos de la PDE & $L_{PDE}$ & \textbf{0.0150} \\
+Physics Violation Index (Conservación de Masa) & \textbf{PVI} & \textbf{0.0268} \\
+Divergencia del Viento Máxima Absoluta & $|\nabla \cdot \vec{v}|_{max}$ & \textbf{1.0619} \\
+Rango de Divergencia del Viento & $\nabla \cdot \vec{v}$ & \textbf{[-0.1340, 1.0619]} \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -139,7 +139,7 @@ Rango de Divergencia del Viento & $\nabla \cdot \vec{v}$ & \textbf{[-0.1951, 1.2
 Para auditar la evolución de las pérdidas y la distribución espacial de la conservación de la masa del viento, se crearon gráficos interactivos que se consolidan a continuación:
 
 \subsection{Curvas de Convergencia}
-El gráfico de curvas de convergencia (ver Figura 1) muestra la trayectoria temporal de las componentes de pérdida en escala logarítmica. Se aprecia cómo los residuos de la física de la PDE decaen constantemente hasta estabilizarse por debajo de $0.01$. La transición final a la etapa de L-BFGS refina los pesos logrando reducir el Loss total a \textbf{0.0529}.
+El gráfico de curvas de convergencia (ver Figura 1) muestra la trayectoria temporal de las componentes de pérdida en escala logarítmica. Se aprecia cómo los residuos de la física de la PDE decaen constantemente hasta estabilizarse por debajo de $0.01$. La transición final a la etapa de L-BFGS refina los pesos logrando reducir el Loss total a \textbf{0.0480}.
 
 \begin{figure}[htbp]
     \centering
@@ -155,7 +155,7 @@ El Physics Violation Index (PVI) evalúa localmente el cumplimiento de la ecuaci
     \item \textbf{Altura Media ($z = 0.5$):} Zona de transición de velocidad del viento.
     \item \textbf{Techo de la Capa de Inversión ($z = 0.9$):} Zona donde el gradiente térmico ejerce la mayor fuerza de supresión del flujo vertical.
 \end{enumerate}
-El PVI promedio ponderado en todo el dominio es de \textbf{0.0263}, lo que físicamente indica que el viento mantiene una incompresibilidad casi perfecta (solo $2.6\%$ de desviación local de masa en promedio).
+El PVI promedio ponderado en todo el dominio es de \textbf{0.0268}, lo que físicamente indica que el viento mantiene una incompresibilidad casi perfecta (solo $2.7\%$ de desviación local de masa en promedio).
 
 \begin{figure}[htbp]
     \centering
@@ -170,8 +170,8 @@ Uno de los principales riesgos al entrenar redes neuronales sobre datos meteorol
 Los resultados de esta auditoría descartan de forma categórica el sobreajuste, sustentando que el modelo ha aprendido la física real de la atmósfera por las siguientes razones científicas:
 
 \begin{enumerate}
-    \item \textbf{Convergencia en el Conjunto de Validación LOSO:} La pérdida en estaciones físicas de prueba que el modelo nunca observó durante el entrenamiento se redujo y estabilizó en \textbf{0.0870}. Si la PINN estuviera simplemente memorizando las estaciones de entrenamiento, el error en las estaciones omitidas divergiría fuertemente.
-    \item \textbf{Residuos Físicos de la PDE Bajos ($L_{PDE} \approx 0.0095$):} Los residuos de las ecuaciones de Navier-Stokes y de advección-difusión son casi nulos. Esto significa que las concentraciones interpoladas y las velocidades de viento inferidas obedecen las leyes físicas de transporte. La red descubrió de forma no-supervisada que el material particulado es arrastrado por el viento catabólico e inhibido por la estabilidad térmica de la inversión.
+    \item \textbf{Convergencia en el Conjunto de Validación LOSO:} La pérdida en estaciones físicas de prueba que el modelo nunca observó durante el entrenamiento se redujo y estabilizó en \textbf{0.1327}. Si la PINN estuviera simplemente memorizando las estaciones de entrenamiento, el error en las estaciones omitidas divergiría fuertemente.
+    \item \textbf{Residuos Físicos de la PDE Bajos ($L_{PDE} \approx 0.0150$):} Los residuos de las ecuaciones de Navier-Stokes y de advección-difusión son casi nulos. Esto significa que las concentraciones interpoladas y las velocidades de viento inferidas obedecen las leyes físicas de transporte. La red descubrió de forma no-supervisada que el material particulado es arrastrado por el viento catabólico e inhibido por la estabilidad térmica de la inversión.
     \item \textbf{El PVI como Regularizador:} La ecuación de continuidad $\nabla \cdot \vec{v} = 0$ actúa como una restricción geométrica rígida que acota el espacio de parámetros viables. Para encajar los datos de PM2.5, el optimizador no puede generar campos de viento caóticos u oscilatorios; debe encontrar corrientes que conserven la masa en todo el cañón del río Medellín. Esto suprime las funciones matemáticas espurias y fuerza al modelo a generalizar correctamente en zonas sin sensores.
 \end{enumerate}
 

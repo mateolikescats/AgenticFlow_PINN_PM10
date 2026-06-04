@@ -207,12 +207,25 @@ if __name__ == "__main__":
     import os
     print("Iniciando preprocesamiento dimensional (x, y, z, t)...")
     
-    # 1. Cargar datos del scraper PM2.5
+    # 1. Cargar datos del scraper PM2.5 usando json nativo para evitar fallos de compresión
     try:
-        df_raw = pd.read_json("datos_oficiales_pm25.json")
+        with open("datos_oficiales_pm25.json", "r", encoding="utf-8") as f:
+            data_pm = json.load(f)
+        df_raw = pd.DataFrame(data_pm)
         print(f"Cargados {len(df_raw)} registros temporales de PM2.5.")
+        
+        # --- ORGANIZACIÓN Y OPTIMIZACIÓN DE DATOS ---
+        initial_len = len(df_raw)
+        # Eliminar registros con NaNs en variables críticas
+        df_raw = df_raw.dropna(subset=['latitud', 'longitud', 'timestamp', 'pm25'])
+        # Eliminar duplicados exactos e históricos por estación y timestamp
+        df_raw = df_raw.drop_duplicates(subset=['id', 'timestamp'])
+        # Ordenar cronológicamente y por estación para estructurar matrices consistentes
+        df_raw = df_raw.sort_values(by=['timestamp', 'id']).reset_index(drop=True)
+        cleaned_len = len(df_raw)
+        print(f"Datos organizados y optimizados. Filas iniciales: {initial_len} -> Filas limpias: {cleaned_len} (Removidos: {initial_len - cleaned_len})")
     except Exception as e:
-        print("Error leyendo datos_oficiales_pm25.json:", e)
+        print("Error leyendo/organizando datos_oficiales_pm25.json:", e)
         exit(1)
         
     # Limites del Valle de Aburrá aprox
@@ -241,8 +254,15 @@ if __name__ == "__main__":
     # 2. Cargar y procesar datos de viento si existen
     if os.path.exists("datos_oficiales_viento.json"):
         try:
-            df_wind_raw = pd.read_json("datos_oficiales_viento.json")
+            with open("datos_oficiales_viento.json", "r", encoding="utf-8") as f:
+                data_wind = json.load(f)
+            df_wind_raw = pd.DataFrame(data_wind)
             print(f"Cargados {len(df_wind_raw)} registros de viento.")
+            
+            # --- ORGANIZACIÓN Y OPTIMIZACIÓN DE VIENTO ---
+            df_wind_raw = df_wind_raw.dropna(subset=['latitud', 'longitud', 'timestamp', 'vx', 'vy'])
+            df_wind_raw = df_wind_raw.drop_duplicates(subset=['id', 'timestamp'])
+            df_wind_raw = df_wind_raw.sort_values(by=['timestamp', 'id']).reset_index(drop=True)
             
             df_wind_processed = preprocessor.process_wind_dataframe(df_wind_raw, time_min)
             
@@ -270,10 +290,7 @@ if __name__ == "__main__":
                     z_c = row['z']
                     
                     # Dinámica de laderas (Vientos anabáticos/catabáticos):
-                    # El viento asciende por las laderas durante el día (t ~ 0.5) y desciende de noche
-                    # Transversal (vx): influenciado por la ladera x y la altitud z
                     vx_sim = -0.15 * x_c * np.cos(2 * np.pi * t_val) - 0.05 * z_c
-                    # Longitudinal (vy): flujo constante canalizado de sur a norte (de -y a +y) con ciclo diurno
                     vy_sim = 0.20 + 0.10 * np.sin(2 * np.pi * t_val)
                     
                     simulated_winds.append({
@@ -290,6 +307,9 @@ if __name__ == "__main__":
                     })
             
             df_wind_sim = pd.DataFrame(simulated_winds)
+            # Ordenar y drop duplicates en viento simulado por coherencia
+            df_wind_sim = df_wind_sim.drop_duplicates(subset=['id', 't'])
+            df_wind_sim = df_wind_sim.sort_values(by=['t', 'id']).reset_index(drop=True)
             wind_output = "datos_meteorologicos_viento.json"
             df_wind_sim.to_json(wind_output, orient='records', indent=4)
             print(f"[OK] Generación de viento simulado exitosa. {len(df_wind_sim)} registros guardados en '{wind_output}'.")
