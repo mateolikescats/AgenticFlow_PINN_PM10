@@ -143,14 +143,7 @@ Asegúrese de tener Julia `1.10+` instalado.
 julia init_julia.jl
 ```
 *Nota: La primera instalación descargará y compilará el stack científico de SciML (NeuralPDE, Optimization), lo que puede tomar entre 5 y 10 minutos.*
-
-### 3. Pruebas y Validación
-Para verificar la integridad matemática y espacial de los datos:
-```bash
-python -m pytest tests/test_data_integrity.py -v
-python src/geo/map_generator.py # Generará un mapa interactivo (mapa_validacion.html)
-```
-
+### 3. Pre-acondicionamiento
 Para probar el pre-acondicionamiento interpolativo de la red neuronal:
 ```bash
 julia src/pinn/train_interpolative.jl

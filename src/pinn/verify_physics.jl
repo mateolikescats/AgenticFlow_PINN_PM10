@@ -24,13 +24,25 @@ function verify_physics(model_path::String="modelo_pinn.jld2")
     @load model_path theta
     phi = discretization.phi
 
-    # 3. Construir la grilla de evaluación 3D en t = 0.5
+    # 3. Construir la grilla de evaluación 3D alineada con las predicciones
+    t_val = 0.5
+    if isfile("input_points.json")
+        try
+            inputs = JSON.parsefile("input_points.json")
+            if !isempty(inputs)
+                t_val = maximum([Float64(d["timestamp"]) for d in inputs])
+                println("Alineando auditoría física con el t de las últimas predicciones (t_val = $t_val)")
+            end
+        catch e
+            println("No se pudo leer input_points.json, usando t_val = 0.5 de fallback. Error: $e")
+        end
+    end
+
     println("Construyendo grilla 3D...")
     nx, ny, nz = 21, 21, 11
     x_vals = range(-1.0, 1.0, length=nx)
     y_vals = range(-1.0, 1.0, length=ny)
     z_vals = range(0.0, 1.0, length=nz)
-    t_val = 0.5
 
     # Almacenar puntos
     pts = []
@@ -74,6 +86,7 @@ function verify_physics(model_path::String="modelo_pinn.jld2")
     vz_base = phi[5](coords, theta.depvar.vz)
     u_base = phi[1](coords, theta.depvar.u)
     T_base = phi[2](coords, theta.depvar.T)
+    S_base = phi[7](coords, theta.depvar.S)
 
     # Diferencias centrales
     dvx_dx = (vx_xp .- vx_xm) ./ (2h)
@@ -110,7 +123,8 @@ function verify_physics(model_path::String="modelo_pinn.jld2")
         "vy" => collect(vy_base),
         "vz" => collect(vz_base),
         "u" => collect(u_base),
-        "T" => collect(T_base)
+        "T" => collect(T_base),
+        "S" => collect(S_base)
     )
 
     out_file = "scratch/pvi_data.json"

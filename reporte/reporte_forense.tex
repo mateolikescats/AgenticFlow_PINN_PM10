@@ -1,350 +1,42 @@
-\documentclass[11pt,letterpaper]{article}
+\documentclass[11pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
-\usepackage[spanish,es-nodecimaldot]{babel}
-\usepackage{geometry}
-\geometry{top=2.5cm, bottom=2.5cm, left=2.5cm, right=2.5cm}
-\usepackage{amsmath, amssymb, amsfonts}
-\usepackage{booktabs}
-\usepackage{xcolor}
-\usepackage{hyperref}
-\usepackage{lmodern}
-\usepackage{fancyhdr}
-\usepackage{titlesec}
-\usepackage{tcolorbox}
-\usepackage{array}
-\usepackage{tabularx}
-
-% Definición de colores
-\definecolor{navyblue}{RGB}{26, 54, 93}
-\definecolor{teal}{RGB}{49, 151, 149}
-\definecolor{darkgray}{RGB}{45, 55, 72}
-\definecolor{crimson}{RGB}{155, 44, 44}
-
-% Configuración de hipervínculos
-\hypersetup{
-    colorlinks=true,
-    linkcolor=navyblue,
-    citecolor=teal,
-    urlcolor=teal,
-    pdftitle={Reporte Forense Ambiental y Atribución Atmosférica},
-    pdfauthor={Consorcio de Expertos Atmosféricos}
-}
-
-% Configuración de títulos de sección
-\titleformat{\section}
-  {\color{navyblue}\normalfont\Large\bfseries}
-  {\thesection}{1em}{}[{\color{navyblue}\vskip 3pt\hrule height 1pt}]
-\titleformat{\subsection}
-  {\color{teal}\normalfont\large\bfseries}
-  {\thesubsection}{1em}{}
-
-% Configuración de encabezado y pie de página
-\pagestyle{fancy}
-\fancyhf{}
-\fancyhead[L]{\color{darkgray}\footnotesize Reporte Forense Ambiental - Valle de Aburrá}
-\fancyhead[R]{\color{darkgray}\footnotesize Mayo 2026}
-\fancyfoot[C]{\thepage}
-\renewcommand{\headrulewidth}{0.4pt}
-\renewcommand{\footrulewidth}{0.4pt}
+\usepackage[spanish]{babel}
+\usepackage{amsmath, amssymb, booktabs, geometry}
+\geometry{margin=1in}
+\title{Reporte Forense Ambiental y Atribución Atmosférica (Últimas 48 Horas)}
+\author{Departamento de Análisis Forense Ambiental}
+\date{\today}
 
 \begin{document}
+\maketitle
 
-% Portada / Encabezado Formal
-\begin{center}
-    {\color{navyblue}\LARGE\bfseries REPORTE FORENSE AMBIENTAL Y ATRIBUCIÓN ATMOSFÉRICA}\\[0.4cm]
-    {\color{teal}\Large\bfseries Validación Física iPINN, Clustering GMM y Plan de Regulación Dinámica}\\[0.8cm]
-    \textbf{Área Metropolitana del Valle de Aburrá, Colombia}\\[0.2cm]
-    \textbf{Fecha de Emisión:} 25/05/2026\\
-    \rule{\linewidth}{1.5pt}
-\end{center}
+\section{Dictamen Termodinámico (iPINN)}
+El modelo iPINN ha validado la estabilidad atmosférica con un \textbf{Physics Violation Index (PVI)} de 0.025999, cumpliendo con las restricciones de incompresibilidad. La estratificación térmica observada confirma una inversión térmica atrapante con energía cinética turbulenta (TKE) atenuada.
 
-\vspace{0.5cm}
+\section{Atribución Forense de Emisiones}
+Se han identificado dos focos críticos mediante clustering GMM:
 
-\begin{abstract}
-Este reporte técnico consolida la investigación forense ambiental orientada a la identificación, caracterización y atribución de fuentes de material particulado fino ($PM_{2.5}$) en el Valle de Aburrá, integrando tres pilares fundamentales: (1) un dictamen termodinámico formal que valida la física de una Red Neuronal Informada por la Física (iPINN) en laderas parabólicas, (2) un informe forense geoespacial basado en el clustering por Modelos de Mezclas Gaussianas (GMM) para la atribución de emisiones, y (3) un plan de contingencia atmosférica y regulación dinámica adaptativa. Los resultados demuestran que las condiciones de inversión térmica nocturna ($z_{inv} \approx 150\text{ m}$) y la estabilidad de la capa límite ($Ri \gg 0.25$) actúan como un mecanismo de confinamiento absoluto, atrapando las emisiones industriales de los corredores de Sabaneta-La Estrella ($91.41\ \mu\text{g/m}^3$) e Itagüí ($122.97\ \mu\text{g/m}^3$) en el fondo del cañón, lo que exige la ejecución inmediata de políticas públicas de mitigación geolocalizadas.
-\end{abstract}
-
-\section{Dictamen Termodinámico Formal: Simulación iPINN en Laderas Parabólicas}
-
-\subsection{Introducción y Contexto de la Evaluación}
-El presente dictamen tiene como objetivo validar la consistencia física de los campos de velocidad ($\vec{u} = [u, v, w]^T$) y temperatura potencial ($\theta$) obtenidos mediante el entrenamiento de una Red Neuronal Informada por la Física inversa (iPINN). El dominio de estudio modela un valle de geometría parabólica definido por la frontera sólida inferior:
-\begin{equation}
-\eta(x) = \alpha x^2
-\end{equation}
-donde $\alpha$ es el parámetro de curvatura de la ladera. El escenario simulado corresponde a una atmósfera estable bajo condiciones de \textbf{inversión térmica nocturna}, caracterizada por el enfriamiento radiativo de la superficie y la acumulación de aire frío en el fondo del valle (\textit{pool} de aire frío).
-
-\subsection{Análisis del Gradiente Térmico Vertical y Estratificación}
-Para que la simulación se considere físicamente válida, la iPINN debe reproducir con precisión la estructura de la inversión térmica. Esto se evalúa cuantitativamente a través del gradiente vertical de temperatura potencial ($\partial \theta / \partial z$) y la frecuencia de Brunt-Väisälä ($N$).
-
-\subsubsection{Gradiente Vertical de Temperatura Potencial}
-Los datos extraídos de la iPINN muestran el siguiente comportamiento del gradiente térmico en el eje central del valle ($x = 0$):
-\begin{itemize}
-    \item \textbf{Zona de Fondo de Valle ($0 \le z < z_{inv}$):} Se observa un gradiente fuertemente positivo:
-    \begin{equation}
-    \frac{\partial \theta}{\partial z} \approx +0.045 \text{ K/m}
-    \end{equation}
-    Este gradiente positivo confirma la existencia de una capa de inversión térmica estable. El aire en contacto con la ladera parabólica se enfría, aumentando su densidad y depositándose en el fondo.
-    \item \textbf{Capa de Inversión ($z \approx z_{inv}$):} En la zona de transición ($z_{inv} \approx 150\text{ m}$), el gradiente alcanza su valor máximo de:
-    \begin{equation}
-    \left.\frac{\partial \theta}{\partial z}\right|_{max} = +0.082 \text{ K/m}
-    \end{equation}
-    lo que representa una ``tapa térmica'' extremadamente rígida.
-    \item \textbf{Atmósfera Libre ($z > z_{inv}$):} El gradiente se estabiliza en un valor estándar de atmósfera neutral a ligeramente estable ($\approx +0.0035 \text{ K/m}$).
-\end{itemize}
-
-\subsubsection{Frecuencia de Brunt-Väisälä ($N^2$)}
-La estabilidad estática se valida mediante el cálculo del cuadrado de la frecuencia de flotabilidad:
-\begin{equation}
-N^2 = \frac{g}{\theta_0} \frac{\partial \theta}{\partial z}
-\end{equation}
-Tomando como temperatura de referencia $\theta_0 = 288.15 \text{ K}$ y $g = 9.81 \text{ m/s}^2$:
-\begin{itemize}
-    \item En la capa de inversión ($z = 150\text{ m}$):
-    \begin{equation}
-    N^2 = \frac{9.81}{288.15} \times 0.082 \approx 2.79 \times 10^{-3} \text{ s}^{-2} \implies N \approx 0.053 \text{ rad/s}
-    \end{equation}
-    \item Dado que $N^2 > 0$ en todo el perfil inferior a $z_{inv}$, \textbf{se confirma matemáticamente que la estratificación es termodinámicamente estable}. Cualquier perturbación vertical de una parcela de aire generará una fuerza de flotabilidad restauradora, suprimiendo el desarrollo de movimientos convectivos.
-\end{itemize}
-
-\subsection{Análisis del Campo de Velocidades y Condiciones de Contorno}
-La consistencia física exige que el campo de velocidades respete las restricciones geométricas impuestas por las laderas parabólicas y la supresión dinámica inducida por la estratificación estable.
-
-\subsubsection{Atenuación de la Velocidad Vertical ($w$) por Flotabilidad}
-La ecuación de momento vertical en la aproximación de Boussinesq establece que:
-\begin{equation}
-\frac{D w}{D t} = -\frac{1}{\rho_0} \frac{\partial p'}{\partial z} + g \frac{\theta'}{\theta_0} + \nu \nabla^2 w
-\end{equation}
-Donde $\theta' = \theta - \bar{\theta} < 0$ representa la anomalía negativa de temperatura en el fondo del valle.
-\begin{itemize}
-    \item Los resultados de la iPINN muestran que la velocidad vertical $w$ decae asintóticamente a medida que se aproxima a la zona de inversión desde abajo, con valores máximos de $|w| < 1.2 \times 10^{-4} \text{ m/s}$ en la zona de inversión.
-    \item \textbf{Conclusión de Flotabilidad:} La flotabilidad negativa ($b = g \frac{\theta'}{\theta_0} < 0$) actúa como un freno dinámico insuperable para las corrientes ascendentes. La iPINN ha aprendido correctamente esta penalización en su función de pérdida de momento.
-\end{itemize}
-
-\subsubsection{Condiciones de Contorno en la Ladera Parabólica ($\eta(x) = \alpha x^2$)}
-Se evaluó el cumplimiento de las condiciones de contorno físicas en la interfaz sólida:
-\begin{enumerate}
-    \item \textbf{Condición de Impenetrabilidad (Cinemática):} El vector de velocidad en la pared debe ser tangente a la superficie, es decir, $\vec{u} \cdot \hat{n} = 0$. El vector normal a la ladera parabólica está dado por:
-    \begin{equation}
-    \hat{n} = \frac{1}{\sqrt{4\alpha^2 x^2 + 1}} [-2\alpha x, 1]^T
-    \end{equation}
-    Evaluando el producto escalar con el campo predicho por la iPINN $[\hat{u}, \hat{w}]^T$ en la frontera:
-    \begin{equation}
-    \vec{u} \cdot \hat{n} = \frac{-2\alpha x \hat{u} + \hat{w}}{\sqrt{4\alpha^2 x^2 + 1}}
-    \end{equation}
-    Los residuos calculados en la frontera sólida arrojan un error medio cuadrático de $MSE_{boundary} \approx 3.4 \times 10^{-6} \text{ m/s}$. Esto demuestra que \textbf{la condición de impenetrabilidad se cumple con alta precisión física}.
-    \item \textbf{Condición de No Deslizamiento (No-Slip):} Debido a la viscosidad, $\vec{u} = 0$ en $z = \eta(x)$. La iPINN muestra una transición suave (capa límite viscosa/térmica) donde la velocidad tangencial decae a cero al aproximarse a la ladera. El flujo catabólico descendente (drenaje nocturno) presenta su máximo de velocidad ($u_{max} \approx 0.45 \text{ m/s}$) a una distancia de $y_{\delta} \approx 12\text{ m}$ de la pared, decayendo de forma monótona hacia la frontera, lo cual es consistente con la teoría analítica de Prandtl para vientos de ladera.
-\end{enumerate}
-
-\subsection{Evaluación de la Consistencia Física Global (Métricas de la iPINN)}
-El entrenamiento de la iPINN se validó analizando la convergencia de los términos de la función de pérdida multifísica ($L_{total}$):
-\begin{equation}
-L_{total} = L_{data} + \lambda_1 L_{Navier-Stokes} + \lambda_2 L_{Continuidad} + \lambda_3 L_{Energia} + \lambda_4 L_{Boundary}
-\end{equation}
-\begin{itemize}
-    \item \textbf{Residuo de Continuidad ($\nabla \cdot \vec{u} = 0$):} El residuo de la divergencia del campo de velocidades se mantiene en el orden de $10^{-5} \text{ s}^{-1}$ en todo el dominio. Esto garantiza la conservación de la masa y la incompresibilidad del flujo de aire bajo la aproximación de Boussinesq.
-    \item \textbf{Número de Richardson Gradiente ($Ri$):} Se evaluó el número de Richardson para confirmar la supresión de la turbulencia:
-    \begin{equation}
-    Ri = \frac{N^2}{\left(\frac{\partial u}{\partial z}\right)^2}
-    \end{equation}
-    En la zona de la ladera y por encima del flujo catabólico, $Ri$ supera ampliamente el valor crítico de $0.25$ ($Ri_{calculado} \approx 1.8 \text{ a } 5.2$). Esto confirma que \textbf{las fuerzas de flotabilidad estable dominan completamente sobre el cizallamiento mecánico}, impidiendo la generación de turbulencia vertical y validando el carácter laminar y confinado del flujo simulado.
-\end{itemize}
-
-\begin{table}[htbp]
+\begin{table}[h]
 \centering
-\small
-\caption{Métricas Físicas y Termodinámicas de la Simulación iPINN}
-\label{tab:pin_metrics}
-\vspace{0.2cm}
-\begin{tabular}{llll}
+\begin{tabular}{lcccc}
 \toprule
-\textbf{Parámetro Físico} & \textbf{Símbolo} & \textbf{Valor Simulado} & \textbf{Implicación Física} \\
+\textbf{Cúmulo} & \textbf{Coordenadas} & \textbf{Tasa Emisión (S)} & \textbf{PM2.5 (ug/m3)} \\
 \midrule
-Gradiente Térmico (Fondo) & $\partial \theta / \partial z$ & $+0.045 \text{ K/m}$ & Inversión térmica estable \\
-Gradiente Térmico (Máximo) & $\partial \theta / \partial z_{max}$ & $+0.082 \text{ K/m}$ & Tapa térmica rígida a $z_{inv} \approx 150\text{ m}$ \\
-Frecuencia Brunt-Väisälä & $N^2$ & $2.79 \times 10^{-3} \text{ s}^{-2}$ & Estratificación estable absoluta \\
-Velocidad Vertical Máxima & $|w|_{max}$ & $< 1.2 \times 10^{-4} \text{ m/s}$ & Supresión de corrientes ascendentes \\
-Velocidad Catabólica Máxima & $u_{max}$ & $0.45 \text{ m/s}$ & Flujo de drenaje nocturno hacia el fondo \\
-Residuo de Continuidad & $\nabla \cdot \vec{u}$ & $\sim 10^{-5} \text{ s}^{-1}$ & Conservación de masa garantizada \\
-Número de Richardson & $Ri$ & $1.8 \text{ a } 5.2$ & Flujo laminar, turbulencia suprimida \\
-Error de Contorno (MSE) & $MSE_{boundary}$ & $3.4 \times 10^{-6} \text{ m/s}$ & Cumplimiento de impenetrabilidad \\
+0: Eje Central & (-0.39, 0.05) & 0.000249 & 17.18 \\
+1: Sur/Ladera & (-0.62, -0.34) & 0.000327 & 17.59 \\
 \bottomrule
 \end{tabular}
+\caption{Métricas de emisión por sector.}
 \end{table}
 
-\section{Informe Forense Ambiental: Atribución de Fuentes de Emisión de PM2.5}
-
-\subsection{Metodología Forense}
-La investigación se desarrolló en tres fases metodológicas consecutivas:
-\begin{enumerate}
-    \item \textbf{Clustering Espaciotemporal GMM:} Aplicación del algoritmo de Mezclas Gaussianas sobre el conjunto de datos de $PM_{2.5}$ para descomponer la distribución de contaminantes en nubes probabilísticas independientes (componentes).
-    \item \textbf{Resolución Geoespacial:} Mapeo de las coordenadas adimensionales de los centros de los cúmulos ($x \in [-1.0, 1.0]$) a puntos geográficos e infraestructura industrial real del Valle de Aburrá mediante la herramienta de consulta geoespacial.
-    \item \textbf{Integración Dinámica:} Correlación de la ubicación de los focos de emisión con el modelo de transporte de vientos catabólicos y la altura de la capa de inversión térmica ($z_{inv} \approx 150\text{ m}$) validada por la red neuronal informada por la física (iPINN).
-\end{enumerate}
-
-\subsection{Resultados del Clustering Espaciotemporal (GMM)}
-El análisis GMM identificó con alta resolución matemática \textbf{dos cúmulos principales} de contaminación por $PM_{2.5}$ que explican la variabilidad espacial y temporal en el cañón:
+\section{Plan de Acción Adaptativo}
+Debido a la nula capacidad de dispersión, se dictan las siguientes medidas:
 \begin{itemize}
-    \item \textbf{Cúmulo 0: Foco de Emisión Sur}
-    \begin{itemize}
-        \item Volumen de Datos: 630 mediciones asociadas.
-        \item Concentración Promedio de $PM_{2.5}$: $91.41 \ \mu\text{g/m}^3$ (Nivel dañino para la salud).
-        \item Centroide Temporal / Espacial Adimensional ($x$): $\approx -0.46$ a $-0.50$.
-        \item Firma Temporal: Concentración persistente con picos de acumulación nocturna y de madrugada (tiempo medio: $0.46$).
-    \end{itemize}
-    \item \textbf{Cúmulo 1: Foco de Emisión Norte / Centro-Sur (Itagüí)}
-    \begin{itemize}
-        \item Volumen de Datos: 618 mediciones asociadas.
-        \item Concentración Promedio de $PM_{2.5}$: $122.97 \ \mu\text{g/m}^3$ (Nivel extremadamente crítico / Alerta roja).
-        \item Centroide Temporal / Espacial Adimensional ($x$): $\approx 0.50$.
-        \item Firma Temporal: Emisiones continuas de carácter basal e industrial (tiempo medio: $0.50$).
-    \end{itemize}
+    \item \textbf{Cúmulo 1 (Industrial):} Reducción del 50\% en procesos de combustión y restricción de carga pesada.
+    \item \textbf{Cúmulo 0 (Movilidad):} Pico y placa ambiental extendido a 4 dígitos y teletrabajo obligatorio (70\% sector público).
+    \item \textbf{Salud Pública:} Suspensión de actividades al aire libre y activación de vigilancia epidemiológica.
 \end{itemize}
 
-\subsection{Atribución Geográfica y de Fuentes en el Valle de Aburrá}
-Al cruzar los centroides matemáticos del GMM con la base de datos geoespacial del Valle de Aburrá, se obtuvo la siguiente atribución directa de fuentes:
-
-\subsubsection{Cúmulo 0 ($x \approx -0.46$ a $-0.50$) $\rightarrow$ Corredor Industrial del Sur (Sabaneta y La Estrella)}
-\begin{itemize}
-    \item \textbf{Ubicación Geográfica Real:} Municipios de Sabaneta y La Estrella, en el extremo sur del cañón del Valle de Aburrá.
-    \item \textbf{Tipología de Fuentes:} Zona caracterizada por una concentración densa de \textbf{fábricas pesadas, fundidoras de metales y plantas de asfalto}. Representa una de las fuentes estacionarias más potentes y térmicamente activas del cañón.
-    \item \textbf{Dinámica de Dispersión:} Las emisiones de este corredor quedan atrapadas en la estrecha garganta del sur del valle. Al enfriarse la superficie por la noche, los vientos catabólicos de ladera arrastran estas emisiones hacia el eje central del río Medellín, acumulándolas en niveles bajos.
-\end{itemize}
-
-\subsubsection{Cúmulo 1 ($x \approx 0.50$) $\rightarrow$ Corredor Industrial de Itagüí / Conexión Norte}
-\begin{itemize}
-    \item \textbf{Ubicación Geográfica Real:} Municipio de Itagüí y su zona de acoplamiento industrial con el sur de Medellín.
-    \item \textbf{Tipología de Fuentes:} Concentración masiva de \textbf{industrias de manufactura, textileras, plantas de procesamiento químico y tráfico pesado de carga} que transita por la Autopista Sur.
-    \item \textbf{Severidad del Impacto:} Este cúmulo registra el promedio más alto de contaminación ($122.97 \ \mu\text{g/m}^3$). Esto se debe a la combinación de emisiones industriales basales ininterrumpidas (procesos de combustión en calderas) y el tráfico pesado de camiones y buses de tecnología diésel obsoleta.
-\end{itemize}
-
-\begin{table}[htbp]
-\centering
-\small
-\caption{Atribución Espacial y Caracterización de Cúmulos de Contaminación (GMM)}
-\label{tab:gmm_clusters}
-\vspace{0.2cm}
-\begin{tabularx}{\textwidth}{l c c l X}
-\toprule
-\textbf{Cúmulo} & \textbf{Centroide ($x$)} & \textbf{Datos} & \textbf{Conc. $PM_{2.5}$} & \textbf{Atribución Geográfica y Fuentes Principales} \\
-\midrule
-\textbf{Cúmulo 0} & $-0.46$ a $-0.50$ & 630 & $91.41\ \mu\text{g/m}^3$ & Corredor Industrial Sur (Sabaneta y La Estrella). Fábricas pesadas, fundidoras de metales y plantas de asfalto. \\
-\midrule
-\textbf{Cúmulo 1} & $+0.50$ & 618 & $122.97\ \mu\text{g/m}^3$ & Corredor Industrial de Itagüí / Conexión Sur. Manufactura, textileras, química y tráfico diésel pesado. \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\subsection{Análisis de Confinamiento Termodinámico (Soporte iPINN)}
-La persistence y gravedad de los cúmulos detectados por el GMM no pueden explicarse únicamente por la magnitud de sus emisiones; requieren el análisis de la física atmosférica local validada por la simulación iPINN:
-\begin{enumerate}
-    \item \textbf{La Tapa Térmica Infranqueable ($z_{inv} \approx 150\text{ m}$):} El gradiente vertical de temperatura potencial fuertemente positivo ($\partial \theta / \partial z \approx +0.082 \text{ K/m}$ en la zona de transición) y la frecuencia de Brunt-Väisälä ($N^2 \approx 2.79 \times 10^{-3} \text{ s}^{-2}$) confirman una estabilidad estratigráfica absoluta. Las nubes de $PM_{2.5}$ de Sabaneta, La Estrella e Itagüí tienen prohibido el ascenso convectivo. La flotabilidad negativa actúa como un freno dinámico insuperable ($|w| < 1.2 \times 10^{-4} \text{ m/s}$).
-    \item \textbf{Efecto de Drenaje Catabólico:} Los vientos de drenaje nocturno que descienden por las laderas parabólicas del valle alcanzan velocidades máximas de $u_{max} \approx 0.45 \text{ m/s}$. Estos vientos ``barren'' el aire limpio de las partes altas y empujan mecánicamente las plumas de contaminación industrial de las laderas hacia el fondo del cañón.
-    \item \textbf{Acumulación en el Fondo del Valle:} Al no poder ascender verticalmente debido a la inversión térmica ($Ri_{calculado} \approx 1.8 \text{ a } 5.2$, lo que suprime por completo la turbulencia vertical), los contaminantes de ambos cúmulos se mezclan horizontalmente a lo largo del eje del río Medellín, creando un ``pool'' de aire altamente contaminado que se estanca sobre las zonas residenciales adyacentes a los corredores industriales.
-\end{enumerate}
-
-\section{Plan de Contingencia Atmosférica y Regulación Dinámica}
-
-\subsection{Consideraciones Científicas y de Salud Pública}
-Basado en el Dictamen Termodinámico Formal (iPINN) y el Informe Forense Ambiental de Atribución de Fuentes, esta consultoría establece que el Valle de Aburrá se encuentra bajo un escenario de \textbf{confinamiento atmosférico absoluto}. La presencia de una ``tapa térmica'' extremadamente rígida a una altura crítica de $z_{inv} \approx 150\text{ m}$, validada por una frecuencia de Brunt-Väisälä de $N^2 \approx 2.79 \times 10^{-3} \text{ s}^{-2}$ y un número de Richardson de $Ri \approx 1.8 \text{ a } 5.2$, suprime por completo la turbulencia vertical y el ascenso convectivo de contaminantes. Adicionalmente, los vientos catabólicos de drenaje nocturno ($u_{max} \approx 0.45 \text{ m/s}$) actúan como una escoba mecánica que barre el aire limpio de las laderas y acumula las emisiones industriales en el fondo del cañón.
-
-Bajo estas condiciones físicas, los dos cúmulos de contaminación identificados mediante el modelo GMM —\textbf{Cúmulo 0 (Sabaneta/La Estrella: $91.41 \ \mu\text{g/m}^3$)} y \textbf{Cúmulo 1 (Itagüí/Conexión Sur: $122.97 \ \mu\text{g/m}^3$)}— representan un riesgo inminente para la salud pública (Alerta Roja). Para contrarrestar esta trampa termodinámica, se decreta el siguiente \textbf{Plan de Acción Dinámico y Adaptativo de 3 Puntos}.
-
-\subsection{Plan de Acción de 3 Puntos}
-
-\begin{tcolorbox}[colback=navyblue!5,colframe=navyblue,title=\textbf{Métricas de Activación Dinámica (iPINN / GMM)}]
-El plan se activará automáticamente cuando se cumplan simultáneamente las siguientes condiciones físicas:
-\begin{center}
-\textbf{$z_{inv} \le 150\text{ m} \quad \mid \quad N^2 \ge 2.5 \times 10^{-3} \text{ s}^{-2} \quad \mid \quad Ri > 1.0 \quad \mid \quad PM_{2.5} > 90\ \mu\text{g/m}^3$}
-\end{center}
-\end{tcolorbox}
-
-\subsubsection{Punto 1: Protocolo de Alerta Temprana y Teletrabajo Zonal Obligatorio}
-\begin{itemize}
-    \item \textbf{Justificación Física:} Dado que el número de Richardson ($Ri \gg 0.25$) demuestra la ausencia de mezcla vertical, el $PM_{2.5}$ emitido se concentra en los primeros 150 metros sobre el suelo del valle, coincidiendo exactamente con la zona de respiración humana. Exponer a la población a concentraciones de $91.41 \ \mu\text{g/m}^3$ y $122.97 \ \mu\text{g/m}^3$ incrementará exponencialmente los ingresos hospitalarios por crisis respiratorias y cardiovasculares.
-    \item \textbf{Directrices de Emergencia:}
-    \begin{itemize}
-        \item \textbf{Teletrabajo Zonal Obligatorio:} Se ordena la transición inmediata al 100\% de teletrabajo para todo el personal administrativo, comercial y de servicios en los municipios de \textbf{Sabaneta, La Estrella, Itagüí} y las comunas del sur y centro-sur de \textbf{Medellín (Comunas 14 - El Poblado, 15 - Guayabal y 16 - Belén)}. Esta medida busca reducir en un 40\% la movilidad de vehículos particulares y motos de dos tiempos durante las horas de consolidación de la inversión térmica.
-        \item \textbf{Suspensión de Actividades al Aire Libre:} Prohibición absoluta de actividades físicas, recreativas y deportivas al aire libre en instituciones educativas públicas y privadas, así como en escenarios públicos (INDER) ubicados por debajo de la cota de los 1.600 msnm, desde las 18:00 horas hasta las 10:00 horas del día siguiente.
-        \item \textbf{Monitoreo Termodinámico Activo:} La activación de esta alerta se automatizará mediante el acoplamiento de los sensores del SIATA con la simulación iPINN. Si el gradiente térmico vertical supera los $+0.050 \text{ K/m}$ en el perfil de los 100-150 metros, la alerta se declarará con 12 horas de anticipación.
-    \end{itemize}
-\end{itemize}
-
-\subsubsection{Punto 2: Restricciones Industriales Zonales y Horarias Dirigidas}
-\begin{itemize}
-    \item \textbf{Justificación Física:} El análisis forense atribuye el Cúmulo 0 a las fundidoras y plantas de asfalto del Sur, cuyas emisiones coinciden con el drenaje catabólico nocturno. El Cúmulo 1 (Itagüí) es de carácter basal continuo debido a calderas industriales y procesos químicos. No se puede tratar al valle como una unidad homogénea; las restricciones deben ser quirúrgicas y geolocalizadas.
-    \item \textbf{Directrices de Emergencia:}
-    \begin{itemize}
-        \item \textbf{Regulación para el Cúmulo 0 (Sabaneta y La Estrella - Corredor Sur):} \textbf{Suspensión Nocturna Total} de operaciones de todas las plantas de asfalto, hornos de fundición de metales y ladrilleras entre las \textbf{21:00 horas y las 09:00 horas}. Este horario coincide con la fase de máxima velocidad del viento catabólico ($u_{max} \approx 0.45 \text{ m/s}$), evitando que el flujo descendente barra y acumule estas plumas industriales altamente tóxicas en el fondo del cañón.
-        \item \textbf{Regulación para el Cúmulo 1 (Itagüí - Corredor Industrial Central-Sur):} \textbf{Reducción del 50\% de Emisiones Basales} en industrias manufactureras, textileras y químicas que operen con calderas de carbón, biomasa o fueloil. Se procederá al \textbf{sellado de fuentes no conformes} que no cuenten con sistemas de lavado de gases (\textit{scrubbers}) o filtros de mangas activos y verificados por el AMVA.
-    \end{itemize}
-\end{itemize}
-
-\subsubsection{Punto 3: Restricciones de Movilidad y Transporte de Carga de Alta Densidad}
-\begin{itemize}
-    \item \textbf{Justificación Física:} El Cúmulo 1 registra el promedio más crítico de contaminación ($122.97 \ \mu\text{g/m}^3$) debido al tráfico pesado de tecnología diésel obsoleta en la Autopista Sur. Al estar atrapadas las emisiones bajo la tapa de 150 metros, el material particulado de combustión diésel (altamente cancerígeno) se acumula sin dilución.
-    \item \textbf{Directrices de Emergencia:}
-    \begin{itemize}
-        \item \textbf{Pico y Placa Ambiental para Transporte de Carga:} Restricción de circulación del \textbf{100\% para camiones, volquetas y vehículos de carga con tecnología diésel de modelos anteriores a 2015 (antigüedad $\ge 10$ años)} en todo el eje de la Autopista Sur, Avenida Regional y vías arterias de Itagüí, Sabaneta y Medellín, en los horarios críticos de acumulación: \textbf{05:00 a 10:00 horas} y \textbf{17:00 a 21:00 horas}. Para vehículos de carga de modelos recientes (posteriores a 2015 o con sistemas Euro V/VI verificados), se aplicará un Pico y Placa de 4 dígitos rotativos diarios en el mismo horario.
-        \item \textbf{Implementación de la Zona de Bajas Emisiones (ZBE) Metropolitana:} Se delimita el corredor industrial de Itagüí y la zona de acoplamiento con Guayabal como ``Zona de Bajas Emisiones de Emergencia''. Queda prohibido el ingreso de vehículos particulares y motos que no cuenten con la revisión tecnomecánica vigente. Se dispondrán cámaras de reconocimiento de placas (ANPR) para sancionar automáticamente a los infractores.
-        \item \textbf{Priorización del Transporte Público Eléctrico:} El Metro de Medellín y las líneas de buses eléctricos (Metroplús) operarán a su máxima capacidad de frecuencia de paso durante la contingencia, subsidiando la tarifa de integración en un 20\% durante las horas de restricción vehicular para incentivar el desestimulo del transporte privado.
-    \end{itemize}
-\end{itemize}
-
-\begin{table}[htbp]
-\centering
-\small
-\caption{Plan de Regulación Dinámica y Acciones de Mitigación por Cúmulo}
-\label{tab:regulation_plan}
-\vspace{0.2cm}
-\renewcommand{\arraystretch}{1.3} 
-\begin{tabularx}{\textwidth}{
-  >{\raggedright\arraybackslash}p{3.2cm}
-  >{\raggedright\arraybackslash}X
-  >{\raggedright\arraybackslash}p{3.0cm}
-  >{\raggedright\arraybackslash}X
-}
-\toprule
-\textbf{Foco / Zona} & \textbf{Medida Principal} & \textbf{Horario de Aplicación} & \textbf{Meta de Reducción de Emisiones} \\
-\midrule
-\textbf{Cúmulo 0} (Sabaneta y La Estrella) & Suspensión total de fundidoras, asfalto y ladrilleras. & 21:00 a 09:00 (Fase catabólica nocturna) & Reducción del 80\% de emisiones industriales nocturnas. \\
-\midrule
-\textbf{Cúmulo 1} (Itagüí y Guayabal) & Reducción del 50\% de emisiones basales en calderas. Sellado de fuentes no conformes. & Continuo (24 horas) durante la alerta & Reducción del 50\% de carga industrial basal de $\text{PM}_{2.5}$. \\
-\midrule
-\textbf{Autopista Sur} (Eje Metropolitano) & Restricción 100\% de vehículos de carga diésel $\ge 10$ años. Pico y placa para Euro V/VI. & 05:00 a 10:00 y 17:00 a 21:00 & Reducción del 60\% de emisiones de hollín y $\text{PM}_{2.5}$ móvil. \\
-\midrule
-\textbf{Zonas Residenciales} (Sabaneta, Itagüí, Medellín) & Teletrabajo obligatorio al 100\%. Suspensión de actividades al aire libre. & Continuo (Teletrabajo) / 18:00 a 10:00 (Aire libre) & Reducción del 40\% en movilidad particular y cero exposición de población sensible. \\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-\subsection{Justificación de la Efectividad del Plan}
-Este plan no es estático; es un modelo de \textbf{política ambiental adaptativa}. Al ligar directamente las restricciones de los Cúmulos 0 y 1 a las variables termodinámicas de la iPINN ($z_{inv}$, $N^2$, $Ri$), garantizamos que las medidas restrictivas más severas solo se apliquen cuando la física de la atmósfera impida la dispersión de contaminantes. Esto minimiza el impacto económico sobre el sector industrial y de transporte, al tiempo que garantiza una protección intransigente de la salud de los habitantes del Valle de Aburrá, evitando que el aire de la región alcance niveles de toxicidad irreversibles.
-
-\vspace{1.5cm}
-
-\noindent
-\begin{minipage}[t]{0.45\textwidth}
-    \centering
-    \rule{6cm}{0.4pt}\\
-    \textbf{Thermodynamics Validator}\\
-    Analista Termodinámico Principal\\
-    División de Validación de Modelos Físicos
-\end{minipage}
-\hfill
-\begin{minipage}[t]{0.45\textwidth}
-    \centering
-    \rule{6cm}{0.4pt}\\
-    \textbf{Source Forensic Investigator}\\
-    Investigador Forense de Fuentes\\
-    Experto en Geomática y Modelado GMM
-\end{minipage}
-
-\vspace{1.5cm}
-
-\begin{center}
-    \rule{6cm}{0.4pt}\\
-    \textbf{Consultor de Política Ambiental y Salud Pública}\\
-    Área Metropolitana del Valle de Aburrá (AMVA)
-\end{center}
-
+\section{Conclusión}
+La simulación es termodinámicamente consistente. La intervención es obligatoria para mitigar el impacto de la inversión térmica sobre la salud pública.
 \end{document}

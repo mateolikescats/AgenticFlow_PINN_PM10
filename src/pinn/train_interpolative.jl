@@ -14,6 +14,7 @@ using ComponentArrays
 using JSON
 using JLD2 # Para guardar los pesos reales
 using Random
+using LineSearches
 
 function clean_wind_id(id_str::String)
     clean_str = replace(id_str, "W-" => "")
@@ -404,9 +405,9 @@ function train_interpolative(pm_path::String="datos_oficiales_pm25.json", wind_p
             return false
         end
 
-        println("Fase 2: Refinando con L-BFGS...")
+        println("Fase 2: Refinando con L-BFGS (usando BackTracking)...")
         prob2 = Optimization.remake(prob, u0=res1.u)
-        res2 = Optimization.solve(prob2, OptimizationOptimJL.LBFGS(); callback=callback_lbfgs, maxiters=lbfgs_iters)
+        res2 = Optimization.solve(prob2, OptimizationOptimJL.LBFGS(linesearch = LineSearches.BackTracking()); callback=callback_lbfgs, maxiters=lbfgs_iters)
         println("Fase 2 terminada. Loss final L-BFGS: ", res2.objective)
         
         # Registrar última época de L-BFGS

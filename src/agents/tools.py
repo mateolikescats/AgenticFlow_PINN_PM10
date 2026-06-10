@@ -236,27 +236,40 @@ class ClusteringInput(BaseModel):
 
 class SpatiotemporalClusteringTool(BaseTool):
     name: str = "Spatiotemporal GMM Clustering Tool"
-    description: str = "Aplica Gaussian Mixture Models (GMM) a los datos de PM2.5 a lo largo del tiempo para identificar distintas nubes de contaminación en movimiento."
+    description: str = "Aplica Gaussian Mixture Models (GMM) a las predicciones de PM2.5 y emisión (S) de las últimas 48 horas para identificar distintas nubes de contaminación."
     args_schema: Type[BaseModel] = ClusteringInput
     
     def _run(self, num_components: int) -> str:
-        if not os.path.exists("datos_siata_temporal.json"):
-            return "Error: No se encontró datos_siata_temporal.json"
+        if not os.path.exists("output_predictions.json"):
+            return "Error: No se encontró el archivo de predicciones 'output_predictions.json'. Por favor ejecuta primero predict_realtime.py para generar las predicciones de las últimas 48 horas."
             
         try:
-            with open("datos_siata_temporal.json", "r", encoding="utf-8") as f:
+            with open("output_predictions.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
                 
-            # Extraer características espaciotemporales pesadas por concentración
-            # Filtramos solo puntos con contaminación significativa
             df = pd.DataFrame(data)
-            df_filtered = df[df["pm25"] > 20.0].copy()
+            
+            # Mapear las columnas de predicciones a las esperadas por el análisis GMM
+            df["pm25"] = df["pred_pm25_ug_m3"]
+            df["t"] = df["timestamp"]
+            # Adimensionalizar elevación a z en [0, 1] (elev_min=1400.0, elev_max=3000.0)
+            df["z"] = (df["elevacion"] - 1400.0) / 1600.0
+            
+            # Calcular x e y adimensionales para los centroides (lon_min=-75.7, lon_max=-75.3, lat_min=6.0, lat_max=6.45)
+            lon_min, lon_max = -75.7, -75.3
+            lat_min, lat_max = 6.0, 6.45
+            df["x"] = 2.0 * (df["longitud"] - lon_min) / (lon_max - lon_min) - 1.0
+            df["y"] = 2.0 * (df["latitud"] - lat_min) / (lat_max - lat_min) - 1.0
+            
+            # Filtrar por el percentil 50 de PM2.5 para capturar áreas con contaminación por encima del promedio
+            # Esto evita fallar si no hay valores por encima de 20 ug/m3 (por ejemplo, en días limpios)
+            threshold = df["pm25"].median()
+            df_filtered = df[df["pm25"] >= threshold].copy()
             
             if len(df_filtered) < num_components:
-                return "Error: No hay suficientes puntos contaminados para formar el número de cúmulos solicitados."
+                return "Error: No hay suficientes puntos con contaminación para formar el número de cúmulos solicitados."
                 
             # Features: latitud, longitud, altitud(z), tiempo(t)
-            # También agrupamos por las columnas x, y de la PINN para los centroides
             X = df_filtered[['latitud', 'longitud', 'z', 't']].values
             
             # Aplicar GMM
@@ -265,14 +278,21 @@ class SpatiotemporalClusteringTool(BaseTool):
             
             df_filtered['cluster'] = gmm.predict(X)
             
-            report = f"Clustering Espaciotemporal Completado con GMM ({num_components} componentes).\n\n"
+            report = f"Clustering Espaciotemporal Completado con GMM ({num_components} componentes) usando las predicciones de las últimas 48 horas.\n\n"
             for i in range(num_components):
                 cluster_data = df_filtered[df_filtered['cluster'] == i]
                 mean_pm25 = cluster_data['pm25'].mean()
                 mean_t = cluster_data['t'].mean()
                 mean_x = cluster_data['x'].mean()
                 mean_y = cluster_data['y'].mean()
-                report += f"Cúmulo {i}: {len(cluster_data)} mediciones | Promedio PM2.5: {mean_pm25:.2f} | Tiempo medio: {mean_t:.2f} | Centroide PINN (x: {mean_x:.2f}, y: {mean_y:.2f})\n"
+                mean_S = cluster_data['pred_emision_S_ug_m3_s'].mean()
+                report += (
+                    f"Cúmulo {i}: {len(cluster_data)} estaciones | "
+                    f"Promedio PM2.5: {mean_pm25:.2f} ug/m3 | "
+                    f"Tiempo medio (t): {mean_t:.2f} | "
+                    f"Centroide PINN (x: {mean_x:.2f}, y: {mean_y:.2f}) | "
+                    f"Emisión Promedio (S): {mean_S:.6f} ug/(m3*s)\n"
+                )
                 
             return report
         except Exception as e:
@@ -334,18 +354,17 @@ class WriteLatexForensicReportTool(BaseTool):
         report_dir = "reporte"
         os.makedirs(report_dir, exist_ok=True)
         report_path = os.path.join(report_dir, "reporte_forense.tex")
-        
         try:
             with open(report_path, "w", encoding="utf-8") as f:
                 f.write(report_content)
-            return f"✅ Reporte forense standalone en LaTeX guardado exitosamente en: {report_path}"
+            return f"[SUCCESS] Reporte forense standalone en LaTeX guardado exitosamente en: {report_path}"
         except Exception as e:
-            return f"❌ Error guardando el reporte en LaTeX: {str(e)}"
+            return f"[ERROR] Error guardando el reporte en LaTeX: {str(e)}"
 
 # --- New Tool for Physical Audit (verify_physics.jl) ---
 class AuditPhysicsTool(BaseTool):
     name: str = "Audit Physics Tool"
-    description: str = "Ejecuta el script de auditoría física verify_physics.jl en Julia para calcular el PVI (Physics Violation Index) y la divergencia máxima del viento sobre el modelo entrenado."
+    description: str = "Ejecuta el script de auditoría física verify_physics.jl en Julia para calcular el PVI (Physics Violation Index) y la divergencia máxima del viento sobre las predicciones de las últimas 48 horas."
 
     def _run(self) -> str:
         try:
