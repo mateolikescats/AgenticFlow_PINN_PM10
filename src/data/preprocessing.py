@@ -16,8 +16,6 @@ class PINNPreprocessor:
         :param spatial_bounds: (min_lat, max_lat, min_lon, max_lon)
         :param time_max: tiempo máximo en segundos (o horas) para escalar t a [0, 1]
         :param conc_max: concentración máxima esperada (ug/m3) para PM2.5/PM10
-        :param conc_max: concentración máxima esperada (ug/m3) para PM2.5/PM10
-        :param elev_bounds: (min_elev, max_elev) en metros sobre el nivel del mar para escalar z a [0, 1]
         """
         self.min_lat, self.max_lat, self.min_lon, self.max_lon = spatial_bounds
         self.time_max = time_max
@@ -114,6 +112,12 @@ class PINNPreprocessor:
         # Eliminar NaNs
         df_scaled = df_scaled.dropna(subset=['latitud', 'longitud', 'timestamp', 'pm25'])
         
+        # Manejo de DataFrame vacío para evitar errores de .apply en Pandas
+        if df_scaled.empty:
+            for col in ['x_scaled', 'y_scaled', 'elevacion_real', 'z_scaled', 't_scaled', 'u_scaled', 'T_scaled', 'x', 'y', 'z', 't', 'u', 'T']:
+                df_scaled[col] = pd.Series(dtype='float64')
+            return df_scaled
+        
         # Aplicar escalamientos
         spatial_scaled = df_scaled.apply(
             lambda row: self.scale_spatial(row['latitud'], row['longitud']), axis=1
@@ -137,12 +141,64 @@ class PINNPreprocessor:
         df_scaled['t_scaled'] = df_scaled['timestamp'].apply(self.scale_time)
         df_scaled['u_scaled'] = df_scaled['pm25'].apply(self.scale_concentration)
         
+        # Perfil de temperatura basado en la elevación (inversión térmica)
+        # Mapea z_scaled ∈ [0, 1] → T ∈ [-1, 1] (consistente con BCs de Julia: T(z=0)=-1, T(z=1)=1)
+        df_scaled['T_scaled'] = 2.0 * df_scaled['z_scaled'] - 1.0
+        
         # Opcional: Estandarizar nombres para Julia si se desea guardar el JSON
         df_scaled['x'] = df_scaled['x_scaled']
         df_scaled['y'] = df_scaled['y_scaled']
         df_scaled['z'] = df_scaled['z_scaled']
         df_scaled['t'] = df_scaled['t_scaled']
         df_scaled['u'] = df_scaled['u_scaled']
+        df_scaled['T'] = df_scaled['T_scaled']
+        
+        return df_scaled
+
+    def process_wind_dataframe(self, df: pd.DataFrame, time_min_ref: float) -> pd.DataFrame:
+        """
+        Procesa el DataFrame de viento y calcula vx, vy adimensionales.
+        """
+        df_scaled = df.copy()
+        
+        # Eliminar NaNs en las columnas críticas
+        df_scaled = df_scaled.dropna(subset=['latitud', 'longitud', 'timestamp', 'vx', 'vy'])
+        
+        if df_scaled.empty:
+            for col in ['x_scaled', 'y_scaled', 'elevacion_real', 'z_scaled', 't_scaled', 'vx_scaled', 'vy_scaled', 'x', 'y', 'z', 't', 'vx', 'vy']:
+                df_scaled[col] = pd.Series(dtype='float64')
+            return df_scaled
+            
+        # Escalamiento espacial
+        spatial_scaled = df_scaled.apply(
+            lambda row: self.scale_spatial(row['latitud'], row['longitud']), axis=1
+        )
+        df_scaled['x_scaled'] = [s[0] for s in spatial_scaled]
+        df_scaled['y_scaled'] = [s[1] for s in spatial_scaled]
+        
+        # Elevaciones
+        unique_coords = df_scaled[['latitud', 'longitud']].drop_duplicates()
+        lat_lons_unique = list(zip(unique_coords['latitud'], unique_coords['longitud']))
+        elevations_unique = self.get_elevations(lat_lons_unique)
+        elev_dict = {coord: elev for coord, elev in zip(lat_lons_unique, elevations_unique)}
+        df_scaled['elevacion_real'] = df_scaled.apply(lambda row: elev_dict[(row['latitud'], row['longitud'])], axis=1)
+        df_scaled['z_scaled'] = df_scaled['elevacion_real'].apply(self.scale_elevation)
+        
+        # Escalar tiempo relativo al mínimo de PM2.5 para mantener sincronización
+        df_scaled['timestamp_rel'] = df_scaled['timestamp'] - time_min_ref
+        df_scaled['t_scaled'] = df_scaled['timestamp_rel'].apply(self.scale_time)
+        
+        # Escalar velocidades (viento máx = 10 m/s)
+        df_scaled['vx_scaled'] = df_scaled['vx'] / 10.0
+        df_scaled['vy_scaled'] = df_scaled['vy'] / 10.0
+        
+        # Mapear a nombres de columnas que Julia espera
+        df_scaled['x'] = df_scaled['x_scaled']
+        df_scaled['y'] = df_scaled['y_scaled']
+        df_scaled['z'] = df_scaled['z_scaled']
+        df_scaled['t'] = df_scaled['t_scaled']
+        df_scaled['vx'] = df_scaled['vx_scaled']
+        df_scaled['vy'] = df_scaled['vy_scaled']
         
         return df_scaled
 
@@ -151,33 +207,114 @@ if __name__ == "__main__":
     import os
     print("Iniciando preprocesamiento dimensional (x, y, z, t)...")
     
-    # 1. Cargar datos del scraper
+    # 1. Cargar datos del scraper PM2.5 usando json nativo para evitar fallos de compresión
     try:
-        df_raw = pd.read_json("datos_oficiales_pm25.json")
+        with open("datos_oficiales_pm25.json", "r", encoding="utf-8") as f:
+            data_pm = json.load(f)
+        df_raw = pd.DataFrame(data_pm)
         print(f"Cargados {len(df_raw)} registros temporales de PM2.5.")
+        
+        # --- ORGANIZACIÓN Y OPTIMIZACIÓN DE DATOS ---
+        initial_len = len(df_raw)
+        # Eliminar registros con NaNs en variables críticas
+        df_raw = df_raw.dropna(subset=['latitud', 'longitud', 'timestamp', 'pm25'])
+        # Eliminar duplicados exactos e históricos por estación y timestamp
+        df_raw = df_raw.drop_duplicates(subset=['id', 'timestamp'])
+        # Ordenar cronológicamente y por estación para estructurar matrices consistentes
+        df_raw = df_raw.sort_values(by=['timestamp', 'id']).reset_index(drop=True)
+        cleaned_len = len(df_raw)
+        print(f"Datos organizados y optimizados. Filas iniciales: {initial_len} -> Filas limpias: {cleaned_len} (Removidos: {initial_len - cleaned_len})")
     except Exception as e:
-        print("Error leyendo datos_oficiales_pm25.json:", e)
+        print("Error leyendo/organizando datos_oficiales_pm25.json:", e)
         exit(1)
         
     # Limites del Valle de Aburrá aprox
     spatial_bounds = (6.0, 6.45, -75.7, -75.3) # (min_lat, max_lat, min_lon, max_lon)
-    time_max = df_raw['timestamp'].max() - df_raw['timestamp'].min() if not df_raw.empty else 1.0
+    
+    time_min = df_raw['timestamp'].min() if not df_raw.empty else 0.0
+    time_max = df_raw['timestamp'].max() - time_min if not df_raw.empty else 1.0
     
     # Ajustamos timestamp a relativo desde el minimo para que empiece en 0
     if not df_raw.empty:
-        df_raw['timestamp'] = df_raw['timestamp'] - df_raw['timestamp'].min()
+        df_raw['timestamp'] = df_raw['timestamp'] - time_min
     
-    conc_max = 100.0 # ug/m3 de pm25 máximo esperado (para no usar el valor de un outlier)
+    conc_max = 100.0 # ug/m3 de pm25 máximo esperado
     
     preprocessor = PINNPreprocessor(spatial_bounds, time_max, conc_max)
     df_pinn = preprocessor.process_dataframe(df_raw)
     
     # Guardar en un nuevo archivo solo con las columnas procesadas para la PINN
-    # (id, x, y, z, t, u, elevacion_real, pm25_original)
-    cols_to_save = ['id', 'x', 'y', 'z', 't', 'u', 'elevacion_real', 'pm25']
+    cols_to_save = ['id', 'x', 'y', 'z', 't', 'u', 'T', 'elevacion_real', 'pm25', 'latitud', 'longitud']
     df_final = df_pinn[cols_to_save].copy()
     
-    output_file = "datos_pinn_pm25.json"
+    output_file = "datos_siata_temporal.json"
     df_final.to_json(output_file, orient='records', indent=4)
     print(f"Preprocesamiento exitoso. Datos listos guardados en '{output_file}'.")
+    
+    # 2. Cargar y procesar datos de viento si existen
+    if os.path.exists("datos_oficiales_viento.json"):
+        try:
+            with open("datos_oficiales_viento.json", "r", encoding="utf-8") as f:
+                data_wind = json.load(f)
+            df_wind_raw = pd.DataFrame(data_wind)
+            print(f"Cargados {len(df_wind_raw)} registros de viento.")
+            
+            # --- ORGANIZACIÓN Y OPTIMIZACIÓN DE VIENTO ---
+            df_wind_raw = df_wind_raw.dropna(subset=['latitud', 'longitud', 'timestamp', 'vx', 'vy'])
+            df_wind_raw = df_wind_raw.drop_duplicates(subset=['id', 'timestamp'])
+            df_wind_raw = df_wind_raw.sort_values(by=['timestamp', 'id']).reset_index(drop=True)
+            
+            df_wind_processed = preprocessor.process_wind_dataframe(df_wind_raw, time_min)
+            
+            cols_wind = ['id', 'x', 'y', 'z', 't', 'vx', 'vy', 'elevacion_real', 'latitud', 'longitud']
+            df_wind_final = df_wind_processed[cols_wind].copy()
+            
+            wind_output = "datos_meteorologicos_viento.json"
+            df_wind_final.to_json(wind_output, orient='records', indent=4)
+            print(f"Preprocesamiento de viento exitoso. Guardado en '{wind_output}'.")
+        except Exception as e:
+            print("Error preprocesando datos de viento:", e)
+    else:
+        print("[WARN] datos_oficiales_viento.json no encontrado (portal down). Generando datos_meteorologicos_viento.json espacial y topográficamente consistentes para entrenamiento...")
+        try:
+            # Obtener estaciones únicas de pm25 para ubicar los sensores meteorológicos simulados en los mismos puntos reales
+            unique_stations = df_final[['id', 'x', 'y', 'z', 'elevacion_real', 'latitud', 'longitud']].drop_duplicates()
+            
+            simulated_winds = []
+            import numpy as np
+            # Generar perfiles de viento para 5 instantes de tiempo para asimilación dinámica
+            for t_val in [0.0, 0.25, 0.5, 0.75, 1.0]:
+                for _, row in unique_stations.iterrows():
+                    x_c = row['x']
+                    y_c = row['y']
+                    z_c = row['z']
+                    
+                    # Dinámica de laderas (Vientos anabáticos/catabáticos):
+                    vx_sim = -0.15 * x_c * np.cos(2 * np.pi * t_val) - 0.05 * z_c
+                    vy_sim = 0.20 + 0.10 * np.sin(2 * np.pi * t_val)
+                    
+                    simulated_winds.append({
+                        'id': f"W-{row['id']}",
+                        'x': x_c,
+                        'y': y_c,
+                        'z': z_c,
+                        't': t_val,
+                        'vx': vx_sim,
+                        'vy': vy_sim,
+                        'elevacion_real': row['elevacion_real'],
+                        'latitud': row['latitud'],
+                        'longitud': row['longitud']
+                    })
+            
+            df_wind_sim = pd.DataFrame(simulated_winds)
+            # Ordenar y drop duplicates en viento simulado por coherencia
+            df_wind_sim = df_wind_sim.drop_duplicates(subset=['id', 't'])
+            df_wind_sim = df_wind_sim.sort_values(by=['t', 'id']).reset_index(drop=True)
+            wind_output = "datos_meteorologicos_viento.json"
+            df_wind_sim.to_json(wind_output, orient='records', indent=4)
+            print(f"[OK] Generación de viento simulado exitosa. {len(df_wind_sim)} registros guardados en '{wind_output}'.")
+        except Exception as e:
+            print("Error generando viento simulado:", e)
+
+
 

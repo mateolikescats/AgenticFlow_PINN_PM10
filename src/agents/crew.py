@@ -1,6 +1,17 @@
 import os
+import sys
+
+# Asegurar que el directorio del script esté en el path para imports locales
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from crewai import Agent, Task, Crew, Process, LLM
-from tools import SpatiotemporalClusteringTool, GeospatialValleQueryTool, WriteLatexForensicReportTool
+from tools import (
+    SpatiotemporalClusteringTool,
+    GeospatialValleQueryTool,
+    WriteLatexForensicReportTool,
+    ExecuteJuliaPINNTool,
+    AuditPhysicsTool
+)
 
 # Cargar variables de entorno desde un archivo .env si existe
 if os.path.exists(".env"):
@@ -19,7 +30,7 @@ llm = LLM(
 
 # 2. Definición de Agentes
 reaction_validator = Agent(
-    role="Thermodynamics Validator",
+    role="Thermodynamics Validator", 
     goal="Validar que los campos físicos de velocidad y temperatura de la PINN sean físicamente consistentes.",
     backstory=(
         "Eres un analista termodinámico exigente. "
@@ -28,6 +39,7 @@ reaction_validator = Agent(
     ),
     verbose=True,
     allow_delegation=False,
+    tools=[ExecuteJuliaPINNTool(), AuditPhysicsTool()],
     llm=llm
 )
 
@@ -37,7 +49,7 @@ forensic_investigator = Agent(
     backstory=(
         "Eres un detective ambiental y experto en geomática. "
         "Utilizas herramientas de clustering GMM para identificar nubes de contaminación y "
-        "luego consultas bases de datos geoespaciales del Valle de Aburrá para cruzar las coordenadas "
+        "luego consultas bases de datos geoespaciales del Valle de Aburrá para cruzar las coordenadas"
         "matemáticas con autopistas de alto tráfico o zonas industriales pesadas específicas."
     ),
     verbose=True,
@@ -77,11 +89,12 @@ latex_reporter = Agent(
 task_validate_thermodynamics = Task(
     description=(
         "1. Analiza los resultados del entrenamiento físico de la iPINN en laderas parabólicas. \n"
-        "2. Evalúa si la estratificación por inversión térmica es estable (gradiente vertical positivo de temperatura) "
+        "2. Ejecuta la 'Audit Physics Tool' para calcular el Physics Violation Index (PVI) y la divergencia máxima del viento. \n"
+        "3. Evalúa si la estratificación por inversión térmica es estable (gradiente vertical positivo de temperatura) "
         "y si la velocidad vertical está correctamente atenuada cerca de las laderas sólidas.\n"
-        "3. Emite un dictamen termodinámico formal de la simulación física."
+        "4. Emite un dictamen termodinámico formal de la simulación física e incluye las métricas del PVI obtenidas por la herramienta."
     ),
-    expected_output="Un dictamen termodinámico formal detallando la estabilidad física y el confinamiento de contaminantes.",
+    expected_output="Un dictamen termodinámico formal detallando la estabilidad física, el confinamiento de contaminantes y las métricas PVI.",
     agent=reaction_validator
 )
 

@@ -34,10 +34,4 @@ datos_oficiales_pm25.json
 datos_pinn_pm25.json
 datos_siata_temporal.json
 datos_siata.json
-
-# Modelos y reportes
-reporte/
-*.tex
-*.jld2
-pesos_pinn.json
-pesos_pinn_boussinesq.json
+

@@ -26,6 +26,16 @@ El proyecto se está desarrollando de forma iterativa y "hueso a hueso" para gar
 ### ✅ Fase 2: Motor Físico PINN (Julia)
 **Estado:** `Completado y Optimizado a 3D`
 - **Framework**: `NeuralPDE.jl`, `ModelingToolkit.jl` y `Lux.jl` por su alto rendimiento científico.
+- **Acoplamiento Boussinesq (Termodinámica)**: Simulación bidimensional transversal $(x, z)$ que acopla 5 ecuaciones diferenciales parciales: masa/continuidad, momentum X y Z (con flotabilidad térmica de Boussinesq $\beta g (T - T_{ref})$), transporte de calor y transporte de contaminantes ($u$) con tasa de emisión $S(x, z, t)$ y penalización Brinkman.
+- **Topografía como Restricción**: Se aplica una máscara de relieve parabólica $z = 0.4x^2$ acoplada a una penalización Darcy-Brinkman masiva para forzar a que las velocidades y concentraciones sean cero en el subsuelo.
+- **Muestreo de Importancia (`ImportanceSampler`)**: Algoritmo Quasi-Monte Carlo personalizado que sobremuestrea zonas cerca del suelo ($z \approx 0$) y en la inversión térmica ($z \approx 0.5$), proyectando automáticamente puntos subterráneos al área atmosférica activa (`AdvectionDiffusion.jl`).
+- **Redes Neuronales Múltiples (Lux.jl)**: Se emplean **6 arquitecturas MLP independientes** con capas ocultas ampliadas a **64 neuronas** para modelar adecuadamente las 5 PDEs acopladas y el relieve, evitando la interferencia de gradientes. La sexta red (emisión $S$) cuenta con una función de activación final `softplus` para garantizar que la emisión de contaminantes sea físicamente positiva ($S \geq 0$).
+- **Entrenamiento en Dos Etapas e Integridad Científica (`train_interpolative.jl`)**:
+  - **Mitigación de Fuga de Datos (Spatial Data Leakage)**: División de datos basada en estaciones físicas completas (**80% entrenamiento / 20% validación**) para asegurar que la capacidad de generalización se evalúe sobre estaciones no vistas.
+  - **Monitoreo de Pérdida de Validación**: Computación y registro de la pérdida de validación en tiempo real en los logs (`Val Loss`) durante cada época de las dos fases de optimización:
+    1.  **Fase 1 (Global)**: Optimización inicial rápida con `Adam` usando hiperparámetros inyectados por JSON.
+    2.  **Fase 2 (Refinamiento)**: Optimización de precisión milimétrica mediante el resolvedor de segundo orden `L-BFGS`.
+
 - **Modelo 3D y Acoplamiento Boussinesq**: Simulación tridimensional espaciotemporal $(x, y, z, t)$ que acopla 6 ecuaciones diferenciales parciales: Continuidad (Masa), Momentum X, Y, y Z (con flotabilidad térmica $\beta g (T - T_{ref})$), Ecuación de Energía y Transporte de PM2.5 ($u$) incluyendo una velocidad de sedimentación gravitacional ($v_s$).
 - **Topografía y Tapa de Inversión Térmica**: Se aplica una condición de frontera estricta $\partial_z u = 0$ en el techo del valle para emular el confinamiento real por inversión térmica, impidiendo que la contaminación escape.
 - **Muestreo de Importancia (`ImportanceSampler`)**: Algoritmo Quasi-Monte Carlo personalizado para sesgar muestras físicas hacia la superficie topográfica real.
@@ -33,6 +43,7 @@ El proyecto se está desarrollando de forma iterativa y "hueso a hueso" para gar
 - **Entrenamiento en Dos Etapas (`train_interpolative.jl`)**:
   1.  **Fase 1 (Global)**: Optimización inicial rápida con `Adam` usando hiperparámetros inyectados por JSON.
   2.  **Fase 2 (Refinamiento)**: Optimización de precisión milimétrica mediante el resolvedor de segundo orden `L-BFGS`.
+
 
 ### ✅ Fase 3: Arquitectura Agéntica y MLOps (Python - CrewAI)
 **Estado:** `Completado y Operativo`

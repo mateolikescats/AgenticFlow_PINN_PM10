@@ -1,6 +1,7 @@
+numpy
+scipy
 pandas
 requests
-geopandas
 shapely
 folium
 scikit-learn

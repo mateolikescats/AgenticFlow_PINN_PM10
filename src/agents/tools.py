@@ -106,6 +106,8 @@ class ExecuteJuliaPINNTool(BaseTool):
                 execution_summary.append(msg)
 
         started_lr = current_lr
+        has_nan = False
+        has_stalled = False
 
         while retry_count < max_retries:
             # Escribir configuración temporal para que Julia la lea
@@ -254,13 +256,11 @@ class SpatiotemporalClusteringTool(BaseTool):
                 return "Error: No hay suficientes puntos contaminados para formar el número de cúmulos solicitados."
                 
             # Features: latitud, longitud, altitud(z), tiempo(t)
+            # También agrupamos por las columnas x, y de la PINN para los centroides
             X = df_filtered[['latitud', 'longitud', 'z', 't']].values
-            weights = df_filtered['pm25'].values
             
             # Aplicar GMM
             gmm = GaussianMixture(n_components=num_components, random_state=42)
-            # En la práctica se pesa por pm25, pero sklearn GMM no acepta weights en fit directamente fácilmente,
-            # así que entrenamos sobre la distribución geométrica
             gmm.fit(X)
             
             df_filtered['cluster'] = gmm.predict(X)
@@ -270,7 +270,9 @@ class SpatiotemporalClusteringTool(BaseTool):
                 cluster_data = df_filtered[df_filtered['cluster'] == i]
                 mean_pm25 = cluster_data['pm25'].mean()
                 mean_t = cluster_data['t'].mean()
-                report += f"Cúmulo {i}: {len(cluster_data)} mediciones | Promedio PM2.5: {mean_pm25:.2f} | Tiempo medio: {mean_t:.2f}\n"
+                mean_x = cluster_data['x'].mean()
+                mean_y = cluster_data['y'].mean()
+                report += f"Cúmulo {i}: {len(cluster_data)} mediciones | Promedio PM2.5: {mean_pm25:.2f} | Tiempo medio: {mean_t:.2f} | Centroide PINN (x: {mean_x:.2f}, y: {mean_y:.2f})\n"
                 
             return report
         except Exception as e:
@@ -278,48 +280,46 @@ class SpatiotemporalClusteringTool(BaseTool):
 
 # --- New Tool for Geospatial Valle Query ---
 class GeospatialValleQueryInput(BaseModel):
-    x_coordinate: float = Field(..., description="Coordenada x adimensionalizada del Valle (-1.0 a 1.0) a interrogar.")
+    x_coordinate: float = Field(..., description="Coordenada x adimensionalizada del Valle (-1.0 a 1.0) (Este-Oeste).")
+    y_coordinate: float = Field(..., description="Coordenada y adimensionalizada del Valle (-1.0 a 1.0) (Sur-Norte).")
 
 class GeospatialValleQueryTool(BaseTool):
     name: str = "Geospatial Valle Query Tool"
-    description: str = "Resuelve y cruza una coordenada adimensional x (-1.0 a 1.0) con puntos geográficos reales del Valle de Aburrá."
+    description: str = "Resuelve y cruza coordenadas adimensionales x (Este-Oeste) e y (Sur-Norte) con puntos geográficos reales del Valle de Aburrá."
     args_schema: Type[BaseModel] = GeospatialValleQueryInput
     
-    def _run(self, x_coordinate: float) -> str:
+    def _run(self, x_coordinate: float, y_coordinate: float) -> str:
         x = x_coordinate
-        if x < -1.0 or x > 1.0:
-            return f"Coordenada x = {x} fuera del dominio [-1.0, 1.0]"
+        y = y_coordinate
+        if x < -1.0 or x > 1.0 or y < -1.0 or y > 1.0:
+            return f"Coordenadas fuera del dominio [-1.0, 1.0]: x={x}, y={y}"
             
-        if -1.0 <= x < -0.6:
-            return (
-                f"Coordenada x = {x:.2f} corresponde a la Ladera Occidental de Medellín (San Javier y Belén). "
-                "Área residencial con topografía empinada, con alta vulnerabilidad a la acumulación de contaminantes "
-                "cuando la altura de mezcla desciende y se bloquea la ventilación transversal."
-            )
-        elif -0.6 <= x < -0.2:
-            return (
-                f"Coordenada x = {x:.2f} corresponde al Corredor Industrial del Sur (Sabaneta y La Estrella). "
-                "Zona caracterizada por una concentración densa de fábricas pesadas, fundidoras de metales y "
-                "plantas de asfalto, representando una de las fuentes estacionarias más potentes en el cañón."
-            )
-        elif -0.2 <= x < 0.2:
-            return (
-                f"Coordenada x = {x:.2f} corresponde al Fondo del Cañón / Centro de Medellín. "
-                "Zona comercial de alta congestión. Cruzada por la Autopista Norte e importantes avenidas. "
-                "Es el punto crítico de emisiones vehiculares móviles (transporte público y camiones de carga de diésel)."
-            )
-        elif 0.2 <= x < 0.6:
-            return (
-                f"Coordenada x = {x:.2f} corresponde al Corredor Industrial del Norte / Zona de Itagüí. "
-                "Concentración masiva de industrias de manufactura, textileras y plantas de procesamiento. "
-                "Registra niveles elevados y constantes de emisiones industriales basales."
-            )
-        else: # 0.6 <= x <= 1.0
-            return (
-                f"Coordenada x = {x:.2f} corresponde a la Ladera Oriental de Medellín (Manrique y Villa Hermosa). "
-                "Ladera residencial asimétrica con relieve empinado. Registra bajas emisiones locales, pero una "
-                "alta susceptibilidad al estancamiento de partículas debido al flujo ascendente de laderas (vientos anabáticos)."
-            )
+        # Determinar zona en Eje Y (Sur-Norte)
+        if y < -0.3:
+            zone_y = "región Sur (Sabaneta, La Estrella, Caldas o Itagüí)"
+            desc_y = "el corredor industrial sur, caracterizado por fundidoras, textileras y alta congestión de carga pesada."
+        elif -0.3 <= y < 0.3:
+            zone_y = "región Central (Medellín y Envigado)"
+            desc_y = "la zona de mayor densidad de tráfico vehicular urbano, automóviles particulares y el centro comercial de la ciudad."
+        else:
+            zone_y = "región Norte (Bello, Copacabana, Girardota o Barbosa)"
+            desc_y = "el corredor norte, que concentra termoeléctricas, industrias manufactureras pesadas y flujos de salida del valle."
+            
+        # Determinar zona en Eje X (Este-Oeste)
+        if x < -0.4:
+            zone_x = "Ladera Occidental (San Javier, Belén, Robledo)"
+            desc_x = "la vertiente residencial occidental, altamente vulnerable al estancamiento de partículas debido a la topografía empinada y vientos débiles."
+        elif -0.4 <= x < 0.4:
+            zone_x = "Fondo del Cañón (Cerca al río Medellín)"
+            desc_x = "el eje plano y bajo del valle, donde se canalizan los vientos y se concentran las emisiones móviles por autopistas."
+        else:
+            zone_x = "Ladera Oriental (Manrique, Villa Hermosa, Poblado)"
+            desc_x = "la vertiente oriental asimétrica, propensa a la recirculación de plumas contaminantes secundarias por corrientes anabáticas."
+            
+        return (
+            f"La coordenada (x={x:.2f}, y={y:.2f}) se ubica geográficamente en la intersección de la {zone_x} y la {zone_y}. "
+            f"Esta ubicación corresponde a {desc_x} en confluencia con {desc_y}"
+        )
 
 # --- New Tool for Writing Standalone LaTeX Forensic Report ---
 class WriteLatexForensicReportInput(BaseModel):
@@ -341,3 +341,39 @@ class WriteLatexForensicReportTool(BaseTool):
             return f"✅ Reporte forense standalone en LaTeX guardado exitosamente en: {report_path}"
         except Exception as e:
             return f"❌ Error guardando el reporte en LaTeX: {str(e)}"
+
+# --- New Tool for Physical Audit (verify_physics.jl) ---
+class AuditPhysicsTool(BaseTool):
+    name: str = "Audit Physics Tool"
+    description: str = "Ejecuta el script de auditoría física verify_physics.jl en Julia para calcular el PVI (Physics Violation Index) y la divergencia máxima del viento sobre el modelo entrenado."
+
+    def _run(self) -> str:
+        try:
+            julia_path = r"C:\Users\arnod\AppData\Local\Programs\Julia-1.12.6\bin\julia.exe"
+            if not os.path.exists(julia_path):
+                julia_path = "julia"
+                
+            print("[MLOps] Ejecutando auditoría física en Julia...", flush=True)
+            process = subprocess.run(
+                [julia_path, "src/pinn/verify_physics.jl"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            
+            pvi_file = "scratch/pvi_data.json"
+            if os.path.exists(pvi_file):
+                with open(pvi_file, "r") as f:
+                    data = json.load(f)
+                return (
+                    f"=== RESULTADO DE AUDITORÍA FÍSICA ===\n"
+                    f"- Physics Violation Index (PVI - Divergencia Media Absoluta del Viento): {data.get('pvi'):.6f}\n"
+                    f"- Divergencia Máxima Absoluta: {data.get('max_div'):.6f}\n"
+                    f"El script de Julia finalizó correctamente. Los datos de divergencia se exportaron a {pvi_file}."
+                )
+            else:
+                return f"Auditoría finalizada, pero no se encontró scratch/pvi_data.json. Salida:\n{process.stdout}"
+        except subprocess.CalledProcessError as e:
+            return f"Error ejecutando verify_physics.jl: {e.stderr}\nStdout:\n{e.stdout}"
+        except Exception as e:
+            return f"Error inesperado al auditar física: {str(e)}"
