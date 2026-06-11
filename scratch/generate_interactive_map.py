@@ -17,6 +17,44 @@ def get_terrain_height(lon, lat):
     # Subtract 80m buffer so that the terrain is always lower than any station in the vicinity
     return z_surf - 80.0
 
+def interpolate_pm25(lon_grid, lat_grid, stations_df):
+    lons = stations_df['longitud'].values
+    lats = stations_df['latitud'].values
+    vals = stations_df['pred_pm25_ug_m3'].values
+    
+    interpolated = np.zeros_like(lon_grid)
+    for i in range(lon_grid.shape[0]):
+        for j in range(lon_grid.shape[1]):
+            lg = lon_grid[i, j]
+            lt = lat_grid[i, j]
+            dists = np.sqrt((lons - lg)**2 + (lats - lt)**2)
+            if np.any(dists < 1e-5):
+                interpolated[i, j] = vals[np.argmin(dists)]
+            else:
+                # Inverse Distance Weighting
+                weights = 1.0 / (dists ** 2)
+                interpolated[i, j] = np.sum(vals * weights) / np.sum(weights)
+    return interpolated
+
+def interpolate_wind(lon, lat, stations_df):
+    lons = stations_df['longitud'].values
+    lats = stations_df['latitud'].values
+    vx_vals = stations_df['pred_viento_vx_m_s'].values
+    vy_vals = stations_df['pred_viento_vy_m_s'].values
+    vz_vals = stations_df['pred_viento_vz_m_s'].values
+    
+    dists = np.sqrt((lons - lon)**2 + (lats - lat)**2)
+    if np.any(dists < 1e-5):
+        idx = np.argmin(dists)
+        return vx_vals[idx], vy_vals[idx], vz_vals[idx]
+    else:
+        weights = 1.0 / (dists ** 2)
+        w_sum = np.sum(weights)
+        vx = np.sum(vx_vals * weights) / w_sum
+        vy = np.sum(vy_vals * weights) / w_sum
+        vz = np.sum(vz_vals * weights) / w_sum
+        return vx, vy, vz
+
 def generate_3d_map():
     predictions_path = "output_predictions.json"
     if not os.path.exists(predictions_path):
@@ -39,25 +77,29 @@ def generate_3d_map():
     
     # Calcular Z del terreno usando el modelo geográfico
     Z_surface = get_terrain_height(LON, LAT)
+    
+    # Calcular mapa de calor espacial de PM2.5 sobre el terreno
+    PM25_grid = interpolate_pm25(LON, LAT, df)
 
     # Inicializar la figura Plotly
     fig = go.Figure()
 
-    # 1. Agregar superficie 3D del terreno con malla de rejilla de alta tecnología (holograma)
+    # 1. Agregar superficie 3D del terreno pintada como mapa de calor espacial de PM2.5
     fig.add_trace(go.Surface(
         x=LON,
         y=LAT,
         z=Z_surface,
-        colorscale='darkmint',
-        opacity=0.25,
-        showscale=False,
+        surfacecolor=PM25_grid,
+        colorscale='YlOrRd', # Colores de contaminación (Amarillo -> Naranja -> Rojo)
+        opacity=0.35,
+        showscale=True,
+        colorbar=dict(
+            title=dict(text="PM2.5 en Terreno (ug/m³)", font=dict(color='white')),
+            x=-0.08, # Colorbar a la izquierda
+            tickfont=dict(color='white')
+        ),
         hoverinfo='skip',
-        name='Topografía del Valle',
-        contours=dict(
-            x=dict(show=True, highlight=False, color='rgba(255, 255, 255, 0.15)'),
-            y=dict(show=True, highlight=False, color='rgba(255, 255, 255, 0.15)'),
-            z=dict(show=False)
-        )
+        name='Topografía del Valle'
     ))
 
     # Calcular base del terreno para los soportes verticales
@@ -108,7 +150,48 @@ def generate_3d_map():
         name='Vector Viento'
     ))
 
-    # 4. Agregar puntos de las estaciones (Scatter3d) coloreados por PM2.5 y dimensionados dinámicamente
+    # 4. Calcular e integrar las Trayectorias de Dispersión (Smoke Trails)
+    dt = 0.015  # Paso temporal de simulación visual
+    for idx, r in df.iterrows():
+        curr_lon = r['longitud']
+        curr_lat = r['latitud']
+        curr_elev = r['elevacion']
+        
+        path_x = [curr_lon]
+        path_y = [curr_lat]
+        path_z = [curr_elev]
+        
+        # Integrar la trayectoria de partículas usando el campo de viento de la PINN
+        for step in range(12):
+            vx, vy, vz = interpolate_wind(curr_lon, curr_lat, df)
+            curr_lon += vx * dt
+            curr_lat += vy * dt
+            curr_elev += vz * 12000.0 * dt  # Escalado vertical visible
+            
+            # Limitar a la caja de visualización
+            curr_lon = np.clip(curr_lon, lon_min, lon_max)
+            curr_lat = np.clip(curr_lat, lat_min, lat_max)
+            
+            path_x.append(curr_lon)
+            path_y.append(curr_lat)
+            path_z.append(curr_elev)
+            
+        fig.add_trace(go.Scatter3d(
+            x=path_x,
+            y=path_y,
+            z=path_z,
+            mode='lines',
+            line=dict(
+                color=list(range(len(path_x), 0, -1)),  # Gradiente inverso: rojo denso en origen, amarillo diluido al final
+                colorscale='YlOrRd',
+                width=3.5
+            ),
+            hoverinfo='skip',
+            showlegend=False,
+            name='Trayectorias de Dispersión'
+        ))
+
+    # 5. Agregar puntos de las estaciones (Scatter3d) coloreados por PM2.5 y dimensionados dinámicamente
     hover_texts = []
     for _, r in df.iterrows():
         text = (
@@ -121,7 +204,6 @@ def generate_3d_map():
         )
         hover_texts.append(text)
 
-    # El tamaño de la esfera depende linealmente de la concentración de PM2.5 para resaltar los focos
     marker_sizes = df['pred_pm25_ug_m3'] * 0.8 + 6
 
     fig.add_trace(go.Scatter3d(
@@ -132,23 +214,18 @@ def generate_3d_map():
         marker=dict(
             size=marker_sizes,
             color=df['pred_pm25_ug_m3'],
-            colorscale='YlOrRd', # Colores cálidos y vibrantes para contaminación
-            showscale=True,
-            colorbar=dict(
-                title=dict(text="PM2.5 (ug/m³)", font=dict(color='white')),
-                x=0.96,
-                tickfont=dict(color='white')
-            ),
-            line=dict(width=2, color='white') # Borde blanco de alto contraste para visibilidad
+            colorscale='YlOrRd',
+            showscale=False,  # La escala de PM2.5 ya está representada en el mapa de calor terrestre
+            line=dict(width=2, color='white')
         ),
         text=hover_texts,
         hoverinfo='text',
         name='Estaciones (PM2.5)'
     ))
 
-    # 5. Configuración del diseño Premium en modo oscuro
+    # 6. Configuración del diseño Premium en modo oscuro
     fig.update_layout(
-        paper_bgcolor='rgb(10, 15, 30)', # Fondo azul oscuro premium
+        paper_bgcolor='rgb(10, 15, 30)',
         plot_bgcolor='rgb(10, 15, 30)',
         scene=dict(
             xaxis=dict(
@@ -171,19 +248,18 @@ def generate_3d_map():
                 showbackground=False,
                 zerolinecolor='rgba(255, 255, 255, 0.2)',
                 tickfont=dict(color='rgb(203, 213, 224)'),
-                range=[1100, 2800] # Límites del cañón optimizados
+                range=[1100, 2800]
             ),
-            aspectratio=dict(x=1, y=1.2, z=0.7), # Proporciones acotadas del cañón
+            aspectratio=dict(x=1, y=1.2, z=0.7),
             camera=dict(
-                eye=dict(x=1.5, y=-1.5, z=0.9) # Vista angular ideal
+                eye=dict(x=1.5, y=-1.5, z=0.9)
             )
         ),
-        showlegend=False, # Ocultamos la leyenda nativa de Plotly por limpieza visual
+        showlegend=False,
         margin=dict(l=0, r=0, b=0, t=0),
         autosize=True
     )
 
-    # Generar el fragmento HTML del gráfico
     plot_div = op.plot(fig, output_type='div', include_plotlyjs='cdn')
 
     # Envolver en una plantilla HTML Premium autodescriptiva usando string normal
@@ -363,9 +439,16 @@ def generate_3d_map():
             clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
             border-radius: 0;
         }
+        .icon-trail {
+            background: linear-gradient(90deg, #ef4444, #facc15);
+            border-radius: 4px;
+            height: 6px;
+            width: 18px;
+            margin-top: 6px;
+        }
         .icon-terrain {
-            background: rgba(16, 185, 129, 0.2);
-            border: 1.5px solid rgba(16, 185, 129, 0.6);
+            background: rgba(239, 68, 68, 0.15);
+            border: 1.5px solid rgba(239, 68, 68, 0.5);
             border-radius: 3px;
         }
         .icon-stalk {
@@ -436,7 +519,7 @@ def generate_3d_map():
     <div class="dashboard">
         <div class="sidebar">
             <div>
-                <span class="badge">iPINN Inversa v1.1</span>
+                <span class="badge">iPINN Inversa v1.2</span>
                 <h1>iPINN 3D: Valle de Aburrá</h1>
                 <div class="subtitle">Predicción Física y Estimación de Emisiones en Tiempo Real</div>
             </div>
@@ -454,12 +537,17 @@ def generate_3d_map():
                     <label class="toggle-label">
                         <input type="checkbox" id="toggle-terrain" checked onchange="toggleLayer('Topografía del Valle', this.checked)">
                         <span class="toggle-custom"></span>
-                        Topografía del Valle
+                        Mapa de Calor (Terreno)
                     </label>
                     <label class="toggle-label">
                         <input type="checkbox" id="toggle-stations" checked onchange="toggleLayer('Estaciones (PM2.5)', this.checked)">
                         <span class="toggle-custom"></span>
                         Estaciones (PM2.5)
+                    </label>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="toggle-trails" checked onchange="toggleLayer('Trayectorias de Dispersión', this.checked)">
+                        <span class="toggle-custom"></span>
+                        Trayectorias (Estelas Pluma)
                     </label>
                     <label class="toggle-label">
                         <input type="checkbox" id="toggle-wind" checked onchange="toggleLayer('Vector Viento', this.checked)">
@@ -478,27 +566,33 @@ def generate_3d_map():
                 <h2>Leyenda del Mapa 3D</h2>
                 <div class="legend-list">
                     <div class="legend-item">
+                        <div class="legend-icon icon-terrain"></div>
+                        <div>
+                            <b>Mapa de Calor (Terreno):</b> Colorea el relieve según la concentración de PM2.5 (Amarillo = Bajo, Rojo = Alto). Revela de un vistazo qué tan grandes y dónde se acumulan los focos de contaminación.
+                        </div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-icon icon-trail"></div>
+                        <div>
+                            <b>Trayectorias de Dispersión:</b> Estelas con gradiente que nacen en cada estación. Indican <b>hacia dónde se dirige</b> la contaminación (del rojo denso en origen, al amarillo al diluirse por el viento).
+                        </div>
+                    </div>
+                    <div class="legend-item">
                         <div class="legend-icon icon-station"></div>
                         <div>
-                            <b>Estaciones (PM2.5):</b> Esferas coloreadas por nivel de contaminación. El <b>diámetro</b> indica la concentración (mayor tamaño = más PM2.5).
+                            <b>Estaciones (PM2.5):</b> Esferas de medición. El <b>diámetro</b> indica la cantidad de PM2.5 detectada.
                         </div>
                     </div>
                     <div class="legend-item">
                         <div class="legend-icon icon-wind"></div>
                         <div>
-                            <b>Campo de Vientos:</b> Conos azules flotantes orientados en la dirección del viento predicho por la física del modelo en altura.
+                            <b>Campo de Vientos:</b> Conos orientados en la dirección del flujo de aire en altura predicho por la física del modelo.
                         </div>
                     </div>
                     <div class="legend-item">
                         <div class="legend-icon icon-stalk"></div>
                         <div>
-                            <b>Soportes de Altura:</b> Líneas que conectan la estación con el suelo, indicando su elevación real sobre el nivel del mar.
-                        </div>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-icon icon-terrain"></div>
-                        <div>
-                            <b>Relieve del Valle:</b> Topografía simplificada del cañón. Se observa cómo la altitud desciende hacia el Norte a medida que el río avanza.
+                            <b>Soportes de Altura:</b> Líneas que conectan la estación con el suelo para evaluar la altitud en el relieve.
                         </div>
                     </div>
                 </div>
@@ -544,7 +638,6 @@ def generate_3d_map():
         function toggleLayer(layerName, visible) {
             var gd = document.querySelector('.plotly-graph-div');
             if (!gd || !gd.data) {
-                // Si el plot no se ha inicializado todavía, reintentar en 100ms
                 setTimeout(function() { toggleLayer(layerName, visible); }, 100);
                 return;
             }
