@@ -99,27 +99,32 @@ def generate_3d_map():
 
     # 2. Generar Fuentes Inferidas GeoJSON (Focos de emisión altos e intensos)
     sources_features = []
+    # 2. Generar Fuentes Inferidas GeoJSON (Focos de emisión altos e intensos)
+    sources_features = []
     for idx, s in enumerate(sources_data):
         emision = s["emision_S_ug_m3_s"]
+        pm25 = s.get("pm25_ug_m3", emision * 45000.0)
         
-        # Mapear emisión a escala de colores: de amarillo a rojo brillante
-        # S suele estar entre 0.0001 y 0.0005
-        ratio = min(max((emision - 0.0001) / 0.0003, 0.0), 1.0)
+        # Mapear calidad del aire del foco (PM2.5) a escala de colores: de amarillo a rojo brillante
+        # El PM2.5 en los focos varía entre 10.0 y 19.0 ug/m3
+        ratio = min(max((pm25 - 10.0) / 9.0, 0.0), 1.0)
         r_col = int(239 * ratio + 250 * (1 - ratio))
         g_col = int(68 * ratio + 204 * (1 - ratio))
         b_col = int(68 * ratio + 21 * (1 - ratio))
         color = f"rgb({r_col},{g_col},{b_col})"
         
-        # Altura del cilindro proporcional a la emisión (e.g., S * 2,500,000 metros)
-        height = emision * 2500000.0 # si emision = 0.0004 -> altura = 1000m
+        # Altura del cilindro proporcional a la concentración de PM2.5 (e.g., pm25 * 50 metros)
+        height = pm25 * 50.0 # si pm25 = 18 ug/m3 -> altura = 900m
         
         sources_features.append({
             "type": "Feature",
             "properties": {
                 "id": int(s["id"]),
+                "name": s.get("name", f"Foco {s['id']}"),
                 "latitud": float(s["latitud"]),
                 "longitud": float(s["longitud"]),
                 "emision": float(emision),
+                "pm25": float(pm25),
                 "vx": float(s["vx"]),
                 "vy": float(s["vy"]),
                 "elev": float(s["elevacion"]),
@@ -143,14 +148,13 @@ def generate_3d_map():
     for idx, s in enumerate(sources_data):
         st_id = int(s["id"])
         emision = float(s["emision_S_ug_m3_s"])
+        pm25 = float(s.get("pm25_ug_m3", emision * 45000.0))
         points = s["trajectory"]
         
         # Guardar trayectoria para partículas en JS
-        # Escalamos el valor de 'pm25' artificialmente de la emisión para que las fórmulas de radio funcionen igual
-        pm25_eq = emision * 45000.0 # si emision = 0.0004 -> pm25_eq = 18.0
         trajectories_data.append({
             "station_id": st_id,
-            "pm25": pm25_eq,
+            "pm25": pm25,
             "vx": float(s["vx"]),
             "vy": float(s["vy"]),
             "points": points
@@ -953,10 +957,11 @@ def generate_3d_map():
                     const el = document.getElementById('tooltip');
                     el.innerHTML = `
                         <div style="font-family: 'Inter', sans-serif; font-size: 11px; color: #fff; line-height:1.4;">
-                            <b style="font-size:12px; color:#facc15;">Foco de Emisión Inferido #${p.id} (iPINN)</b><br>
+                            <b style="font-size:12px; color:#facc15;">Foco: ${p.name} (iPINN)</b><br>
                             <b>Coordenadas:</b> ${p.latitud.toFixed(4)}°, ${p.longitud.toFixed(4)}°<br>
                             <b>Altitud Terreno:</b> ${p.elev.toFixed(0)} msnm<br>
                             <hr style="border:0; border-top:1px solid rgba(255,255,255,0.15); margin:6px 0;">
+                            <span style="color:#ef4444; font-size:11.5px;"><b>PM2.5 Estimado: ${p.pm25.toFixed(1)} ug/m³</b></span><br>
                             <span style="color:#38bdf8; font-size:11.5px;"><b>Tasa de Emisión (S): ${p.emision.toFixed(6)} ug/(m³*s)</b></span><br>
                             <b>Viento en el Foco:</b> [${p.vx.toFixed(2)}, ${p.vy.toFixed(2)}] m/s
                         </div>

@@ -194,6 +194,10 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         
         pt = reshape([x_scaled, y_scaled, z_scaled, t_scaled], 4, 1)
         
+        # Evaluar red de concentración u (PM2.5) en esta coordenada exacta
+        u_val = phi[1](pt, theta.depvar.u)[1]
+        pm25_est = clamp(u_val * 100.0, 0.0, Inf)
+        
         # Evaluar red de emisión S en esta coordenada exacta
         S_val = phi[7](pt, theta.depvar.S)[1]
         emision_est = S_val * (100.0 / 3600.0) # des-escalar a ug/m3/s
@@ -227,7 +231,7 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
             push!(path, [lon_t, lat_t, elev_t])
         end
         
-        println("📍 Foco de Emisión Urbano: $(uc.name) | Lon=$(round(uc.lon, digits=4)), Lat=$(round(uc.lat, digits=4)), Emisión S=$(round(emision_est, digits=6)) ug/(m3*s)")
+        println("📍 Foco de Emisión Urbano: $(uc.name) | Lon=$(round(uc.lon, digits=4)), Lat=$(round(uc.lat, digits=4)), PM2.5=$(round(pm25_est, digits=1)) ug/m3, Emisión S=$(round(emision_est, digits=6)) ug/(m3*s)")
         
         push!(hotspots_data, Dict(
             "id" => uc.id,
@@ -235,6 +239,7 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
             "longitud" => uc.lon,
             "latitud" => uc.lat,
             "elevacion" => uc.elev,
+            "pm25_ug_m3" => round(pm25_est, digits=3),
             "emision_S_ug_m3_s" => round(emision_est, digits=6),
             "vx" => round(vx_est, digits=3),
             "vy" => round(vy_est, digits=3),

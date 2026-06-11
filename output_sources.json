@@ -6,6 +6,7 @@
         "latitud": 6.4369602,
         "longitud": -75.3303986,
         "name": "Girardota (Norte Industrial)",
+        "pm25_ug_m3": 10.175,
         "trajectory": [
             [
                 -75.3303986,
@@ -98,6 +99,7 @@
         "latitud": 6.3453598,
         "longitud": -75.5047531,
         "name": "Copacabana (Norte)",
+        "pm25_ug_m3": 11.446,
         "trajectory": [
             [
                 -75.5047531,
@@ -190,6 +192,7 @@
         "latitud": 6.3375502,
         "longitud": -75.5678024,
         "name": "Bello (Norte-Centro)",
+        "pm25_ug_m3": 14.566,
         "trajectory": [
             [
                 -75.5678024,
@@ -282,6 +285,7 @@
         "latitud": 6.2525611,
         "longitud": -75.5695801,
         "name": "Medellín Centro (Tráfico)",
+        "pm25_ug_m3": 18.244,
         "trajectory": [
             [
                 -75.5695801,
@@ -374,6 +378,7 @@
         "latitud": 6.2218938,
         "longitud": -75.6106033,
         "name": "Medellín Belén (Industrial)",
+        "pm25_ug_m3": 18.539,
         "trajectory": [
             [
                 -75.6106033,
@@ -466,6 +471,7 @@
         "latitud": 6.1686831,
         "longitud": -75.5819702,
         "name": "Itagüí (Sur Industrial)",
+        "pm25_ug_m3": 15.141,
         "trajectory": [
             [
                 -75.5819702,
@@ -558,6 +564,7 @@
         "latitud": 6.1455002,
         "longitud": -75.6212616,
         "name": "Sabaneta (Sur)",
+        "pm25_ug_m3": 17.394,
         "trajectory": [
             [
                 -75.6212616,
@@ -650,6 +657,7 @@
         "latitud": 6.0930777,
         "longitud": -75.637764,
         "name": "Caldas (Sur Industrial)",
+        "pm25_ug_m3": 12.937,
         "trajectory": [
             [
                 -75.637764,
