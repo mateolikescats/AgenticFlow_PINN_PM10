@@ -2134,35 +2134,56 @@ def generate_3d_map():
                 map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.85);
                 map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.85);
             } else if (activeSourceId !== null) {
-                // Modo hacia-donde-va (foco emisor seleccionado)
-                if (activeSourceType === 'urban') {
-                    map.setPaintProperty('urban-trajectories-layer', 'line-width', 
-                        ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
-                    );
-                    map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 
-                        ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
-                    );
-                    map.setPaintProperty('industrial-trajectories-layer', 'line-width', ['get', 'width']);
+                const isBackward = (activeAnalysisMode === 'de-donde-viene');
+                if (isBackward) {
+                    // Modo de-donde-viene (foco emisor): atenuar estelas precalculadas de todos los focos
+                    map.setPaintProperty('urban-trajectories-layer', 'line-width', 1.0);
+                    map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 0.08);
+                    map.setPaintProperty('industrial-trajectories-layer', 'line-width', 1.0);
                     map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 0.08);
                     
-                    map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
-                        ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
-                    );
-                    map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.15);
+                    if (activeSourceType === 'urban') {
+                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
+                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                        );
+                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.15);
+                    } else {
+                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
+                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                        );
+                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
+                    }
                 } else {
-                    map.setPaintProperty('industrial-trajectories-layer', 'line-width', 
-                        ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
-                    );
-                    map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 
-                        ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
-                    );
-                    map.setPaintProperty('urban-trajectories-layer', 'line-width', ['get', 'width']);
-                    map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 0.08);
-                    
-                    map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
-                        ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
-                    );
-                    map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
+                    // Modo hacia-donde-va (foco emisor seleccionado): resaltar su estela precalculada
+                    if (activeSourceType === 'urban') {
+                        map.setPaintProperty('urban-trajectories-layer', 'line-width', 
+                            ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
+                        );
+                        map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 
+                            ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
+                        );
+                        map.setPaintProperty('industrial-trajectories-layer', 'line-width', ['get', 'width']);
+                        map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 0.08);
+                        
+                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
+                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                        );
+                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.15);
+                    } else {
+                        map.setPaintProperty('industrial-trajectories-layer', 'line-width', 
+                            ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
+                        );
+                        map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 
+                            ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
+                        );
+                        map.setPaintProperty('urban-trajectories-layer', 'line-width', ['get', 'width']);
+                        map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 0.08);
+                        
+                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
+                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                        );
+                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
+                    }
                 }
             } else if (activeStationId !== null) {
                 if (activeAnalysisMode === 'de-donde-viene') {
@@ -2391,12 +2412,12 @@ def generate_3d_map():
 
                             // --- FASE 3: Aislamiento de partículas ---
                             if (activeSourceId !== null) {
-                                if (stationId === activeSourceId && traj.type === activeSourceType) {
-                                    // Foco seleccionado: más grande y brillante
+                                if (activeAnalysisMode === 'hacia-donde-va' && stationId === activeSourceId && traj.type === activeSourceType) {
+                                    // Foco seleccionado en modo hacia-donde-va: más grande y brillante
                                     radius = radius * 1.25;
                                     opacity = Math.min(opacity * 1.3, 0.95);
                                 } else {
-                                    // Focos no seleccionados: atenuar a 10%
+                                    // Focos no seleccionados o en modo de-donde-viene: atenuar a 10%
                                     opacity = opacity * 0.10;
                                 }
                             } else if (activeStationId !== null) {
@@ -2468,9 +2489,10 @@ def generate_3d_map():
             if (typeof backTrajectoryPoints !== 'undefined' && backTrajectoryPoints && backTrajectoryPoints.length > 0) {
                 const numBackParticles = 7;
                 const L = backTrajectoryPoints.length;
+                const isBackward = (activeAnalysisMode === 'de-donde-viene');
                 for (let i = 0; i < numBackParticles; i++) {
                     const rawAge = (t_val * 2.5 + i * (L / numBackParticles)) % (L - 1);
-                    const age = L - 1 - rawAge; // Fluye de regreso a la estación (de L-1 a 0)
+                    const age = isBackward ? (L - 1 - rawAge) : rawAge; // Fluye de regreso en retro (de L-1 a 0), adelante en dispersion (de 0 a L-1)
                     const pos = interpolatePosition(backTrajectoryPoints, age);
                     
                     let localPm = interpolatePM25JS(pos[0], pos[1]);
