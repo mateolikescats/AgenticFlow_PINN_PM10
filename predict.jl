@@ -168,53 +168,47 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
     # ==========================================================================
     # NUEVO: BÚSQUEDA EN GRILLA DE FUENTES DE EMISIÓN REALES (LOCALIZACIÓN INVERSA)
     # ==========================================================================
-    println("\n🔎 Evaluando focos de emisión (fuentes) en los centros urbanos e industriales del fondo del valle...")
+    # ==========================================================================
+    # CÁLCULO DE FUENTES - DOBLE ENFOQUE (AUTÓNOMO & URBANO)
+    # ==========================================================================
+    println("\n🔎 Calculando focos de emisión con DOBLE CAPA (Industrial Autónomo y Urbano Tránsito)...")
     
-    # Definir los 8 centros urbanos e industriales reales en el fondo del valle (basados en las estaciones urbanas sensoras)
-    # Esto asegura que las fuentes se localicen exactamente en las ciudades/vías del fondo del valle
+    hotspots_data = Dict{String, Any}[]
+    
+    # --- PARTE 1: FUENTES URBANAS (TRÁNSITO / CIUDAD) ---
+    println("\n1️⃣ Procesando Fuentes Urbanas (Plano del Valle)...")
     urban_centers = [
-        (name="Girardota (Norte Industrial)", lat=6.4369602, lon=-75.3303986, id=1, elev=1313.0),
+        (name="Girardota (Norte)", lat=6.4369602, lon=-75.3303986, id=1, elev=1313.0),
         (name="Copacabana (Norte)", lat=6.3453598, lon=-75.5047531, id=2, elev=1455.0),
         (name="Bello (Norte-Centro)", lat=6.3375502, lon=-75.5678024, id=3, elev=1506.0),
         (name="Medellín Centro (Tráfico)", lat=6.2525611, lon=-75.5695801, id=4, elev=1479.0),
         (name="Medellín Belén (Industrial)", lat=6.2218938, lon=-75.6106033, id=5, elev=1582.0),
         (name="Itagüí (Sur Industrial)", lat=6.1686831, lon=-75.5819702, id=6, elev=1584.0),
         (name="Sabaneta (Sur)", lat=6.1455002, lon=-75.6212616, id=7, elev=1626.0),
-        (name="Caldas (Sur Industrial)", lat=6.0930777, lon=-75.6377640, id=8, elev=1759.0)
+        (name="Caldas (Sur)", lat=6.0930777, lon=-75.6377640, id=8, elev=1759.0)
     ]
     
-    hotspots_data = Dict{String, Any}[]
-    
     for (idx, uc) in enumerate(urban_centers)
-        # Adimensionalizar coordenadas
         x_scaled = 2.0 * (uc.lon - lon_min) / (lon_max - lon_min) - 1.0
         y_scaled = 2.0 * (uc.lat - lat_min) / (lat_max - lat_min) - 1.0
         z_scaled = (uc.elev - elev_min) / (elev_max - elev_min)
-        t_scaled = 1.0  # Último timestamp
+        t_scaled = 1.0
         
         pt = reshape([x_scaled, y_scaled, z_scaled, t_scaled], 4, 1)
         
-        # Evaluar red de concentración u (PM2.5) en esta coordenada exacta
         u_val = phi[1](pt, theta.depvar.u)[1]
         pm25_est = clamp(u_val * 100.0, 0.0, Inf)
         
-        # Evaluar red de emisión S en esta coordenada exacta
         S_val = phi[7](pt, theta.depvar.S)[1]
-        emision_est = S_val * (100.0 / 3600.0) # des-escalar a ug/m3/s
+        emision_est = S_val * (100.0 / 3600.0)
         
-        # Evaluar vientos en esta coordenada exacta
         vx_est = phi[3](pt, theta.depvar.vx)[1] * 10.0
         vy_est = phi[4](pt, theta.depvar.vy)[1] * 10.0
         
-        # Trazar trayectoria física de dispersión saliendo de esta fuente
-        x = x_scaled
-        y = y_scaled
-        z = z_scaled
-        t = 1.0
-        
+        # Trayectoria
+        x, y, z, t = x_scaled, y_scaled, z_scaled, 1.0
         path = Vector{Float64}[]
         push!(path, [uc.lon, uc.lat, uc.elev])
-        
         for step in 1:15
             pt_step = reshape([x, y, z, t], 4, 1)
             vx_val = phi[3](pt_step, theta.depvar.vx)[1]
@@ -225,17 +219,19 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
             y = clamp(y + vy_val * dt_scaled, -1.0, 1.0)
             z = clamp(z + vz_val * dt_scaled, 0.0, 1.0)
             
-            lon_t = lon_min + (x + 1.0)/2.0 * (lon_max - lon_min)
-            lat_t = lat_min + (y + 1.0)/2.0 * (lat_max - lat_min)
-            elev_t = elev_min + z * (elev_max - elev_min)
-            push!(path, [lon_t, lat_t, elev_t])
+            push!(path, [
+                lon_min + (x + 1.0)/2.0 * (lon_max - lon_min),
+                lat_min + (y + 1.0)/2.0 * (lat_max - lat_min),
+                elev_min + z * (elev_max - elev_min)
+            ])
         end
         
-        println("📍 Foco de Emisión Urbano: $(uc.name) | Lon=$(round(uc.lon, digits=4)), Lat=$(round(uc.lat, digits=4)), PM2.5=$(round(pm25_est, digits=1)) ug/m3, Emisión S=$(round(emision_est, digits=6)) ug/(m3*s)")
+        println("   🚦 Urbano: $(uc.name) | PM2.5=$(round(pm25_est, digits=1)), S=$(round(emision_est, digits=6))")
         
         push!(hotspots_data, Dict(
             "id" => uc.id,
             "name" => uc.name,
+            "type" => "urban",
             "longitud" => uc.lon,
             "latitud" => uc.lat,
             "elevacion" => uc.elev,
@@ -243,6 +239,183 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
             "emision_S_ug_m3_s" => round(emision_est, digits=6),
             "vx" => round(vx_est, digits=3),
             "vy" => round(vy_est, digits=3),
+            "trajectory" => path
+        ))
+    end
+    
+    # --- PARTE 2: FUENTES INDUSTRIALES (AUTÓNOMAS - GRILLA + NMS) ---
+    println("\n2️⃣ Procesando Fuentes Industriales Autónomas (Búsqueda en Grilla + NMS)...")
+    
+    grid_lon = range(lon_min + 0.03, lon_max - 0.03, length=35)
+    grid_lat = range(lat_min + 0.03, lat_max - 0.03, length=35)
+    N_grid = length(grid_lon) * length(grid_lat)
+    
+    grid_pts = Matrix{Float64}(undef, 4, N_grid)
+    idx = 1
+    for lon in grid_lon, lat in grid_lat
+        x_scaled = 2.0 * (lon - lon_min) / (lon_max - lon_min) - 1.0
+        y_scaled = 2.0 * (lat - lat_min) / (lat_max - lat_min) - 1.0
+        
+        # Interpolar la elevación real del terreno a partir de las estaciones
+        w_sum = 0.0
+        elev_sum = 0.0
+        for st in inputs
+            dist = sqrt((lon - Float64(st["longitud"]))^2 + (lat - Float64(st["latitud"]))^2)
+            if dist < 1e-5
+                elev_sum = Float64(st["elevacion"])
+                w_sum = 1.0
+                break
+            end
+            w = 1.0 / (dist^2)
+            w_sum += w
+            elev_sum += Float64(st["elevacion"]) * w
+        end
+        elev_val = elev_sum / w_sum
+        z_scaled = clamp((elev_val - elev_min) / (elev_max - elev_min), 0.0, 1.0)
+        
+        grid_pts[1, idx] = x_scaled
+        grid_pts[2, idx] = y_scaled
+        grid_pts[3, idx] = z_scaled
+        grid_pts[4, idx] = 1.0
+        idx += 1
+    end
+    
+    # Evaluar red de emisión S
+    S_grid = phi[7](grid_pts, theta.depvar.S)
+    emision_grid = S_grid * (100.0 / 3600.0)
+    
+    # Evaluar red de concentración u
+    u_grid = phi[1](grid_pts, theta.depvar.u) * 100.0
+    
+    # Evaluar vientos
+    vx_grid = phi[3](grid_pts, theta.depvar.vx) * 10.0
+    vy_grid = phi[4](grid_pts, theta.depvar.vy) * 10.0
+    
+    # Estructurar puntos filtrando por cercanía a estaciones (huella del sensor)
+    # para evitar extrapolar en los límites extremos del recuadro
+    all_grid_points = GridPoint[]
+    idx = 1
+    for lon in grid_lon, lat in grid_lat
+        is_near_sensors = false
+        for st in inputs
+            dist = sqrt((lon - Float64(st["longitud"]))^2 + (lat - Float64(st["latitud"]))^2)
+            if dist <= 0.06  # Radio de 6.6 km alrededor de cualquier estación
+                is_near_sensors = true
+                break
+            end
+        end
+        
+        if is_near_sensors
+            # Re-calcular elevación interpolada
+            w_sum = 0.0
+            elev_sum = 0.0
+            for st in inputs
+                dist = sqrt((lon - Float64(st["longitud"]))^2 + (lat - Float64(st["latitud"]))^2)
+                if dist < 1e-5
+                    elev_sum = Float64(st["elevacion"])
+                    w_sum = 1.0
+                    break
+                end
+                w = 1.0 / (dist^2)
+                w_sum += w
+                elev_sum += Float64(st["elevacion"]) * w
+            end
+            elev_val = elev_sum / w_sum
+            
+            push!(all_grid_points, GridPoint(
+                lon, lat, elev_val, 
+                emision_grid[idx], vx_grid[idx], vy_grid[idx], 
+                grid_pts[1, idx], grid_pts[2, idx], grid_pts[3, idx]
+            ))
+        end
+        idx += 1
+    end
+    
+    # Ordenar por emisión S descendente
+    sort!(all_grid_points, by = p -> p.S, rev=true)
+    
+    # Ejecutar NMS espacial libre
+    hotspots = GridPoint[]
+    min_dist_deg = 0.032 # Aprox 3.5 km de distancia mínima
+    for gp in all_grid_points
+        too_close = false
+        for hs in hotspots
+            dist = sqrt((gp.lon - hs.lon)^2 + (gp.lat - hs.lat)^2)
+            if dist < min_dist_deg
+                too_close = true
+                break
+            end
+        end
+        if !too_close
+            push!(hotspots, gp)
+        end
+        if length(hotspots) >= 8
+            break
+        end
+    end
+    
+    # Agregar las fuentes industriales encontradas
+    for (h_idx, hs) in enumerate(hotspots)
+        # Buscar el nombre del municipio más cercano para darle un identificador legible
+        closest_name = "Zona Ladera"
+        min_d = Inf
+        for st in inputs
+            dist = sqrt((hs.lon - Float64(st["longitud"]))^2 + (hs.lat - Float64(st["latitud"]))^2)
+            if dist < min_d
+                min_d = dist
+                # Buscar correspondencia de nombre
+                for uc in urban_centers
+                    d_uc = sqrt((uc.lon - Float64(st["longitud"]))^2 + (uc.lat - Float64(st["latitud"]))^2)
+                    if d_uc < 1e-4
+                        closest_name = "Ladera de " * uc.name
+                        break
+                    end
+                end
+            end
+        end
+        if closest_name == "Zona Ladera"
+            closest_name = "Foco Autónomo #" * string(h_idx)
+        end
+        
+        # Consultar la concentración exacta en el hotspot
+        pt = reshape([hs.x, hs.y, hs.z, 1.0], 4, 1)
+        u_val = phi[1](pt, theta.depvar.u)[1]
+        pm25_est = clamp(u_val * 100.0, 0.0, Inf)
+        
+        # Trayectoria
+        x, y, z, t = hs.x, hs.y, hs.z, 1.0
+        path = Vector{Float64}[]
+        push!(path, [hs.lon, hs.lat, hs.elev])
+        for step in 1:15
+            pt_step = reshape([x, y, z, t], 4, 1)
+            vx_val = phi[3](pt_step, theta.depvar.vx)[1]
+            vy_val = phi[4](pt_step, theta.depvar.vy)[1]
+            vz_val = phi[5](pt_step, theta.depvar.vz)[1]
+            
+            x = clamp(x + vx_val * dt_scaled, -1.0, 1.0)
+            y = clamp(y + vy_val * dt_scaled, -1.0, 1.0)
+            z = clamp(z + vz_val * dt_scaled, 0.0, 1.0)
+            
+            push!(path, [
+                lon_min + (x + 1.0)/2.0 * (lon_max - lon_min),
+                lat_min + (y + 1.0)/2.0 * (lat_max - lat_min),
+                elev_min + z * (elev_max - elev_min)
+            ])
+        end
+        
+        println("   🏭 Industrial Autónomo: $(closest_name) | PM2.5=$(round(pm25_est, digits=1)), S=$(round(hs.S, digits=6))")
+        
+        push!(hotspots_data, Dict(
+            "id" => Int(round(hs.S * 1000000.0)) + h_idx * 100, # ID único que no colisione
+            "name" => closest_name,
+            "type" => "industrial",
+            "longitud" => hs.lon,
+            "latitud" => hs.lat,
+            "elevacion" => hs.elev,
+            "pm25_ug_m3" => round(pm25_est, digits=3),
+            "emision_S_ug_m3_s" => round(hs.S, digits=6),
+            "vx" => round(hs.vx, digits=3),
+            "vy" => round(hs.vy, digits=3),
             "trajectory" => path
         ))
     end
