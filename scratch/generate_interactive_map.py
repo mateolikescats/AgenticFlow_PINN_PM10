@@ -1749,16 +1749,11 @@ def generate_3d_map():
                 const layerGeoJSON = (activeSourceType === 'urban') ? urbanSourcesGeoJSON : industrialSourcesGeoJSON;
                 const srcFeature = layerGeoJSON.features.find(f => f.properties.id === activeSourceId);
                 if (srcFeature) {
-                    const p = srcFeature.properties;
-                    if (isBackward) {
-                        createDynamicTrajectory(p.longitud, p.latitud, true);
-                    } else {
-                        // En modo dispersión usamos sus estelas precalculadas y borramos la dinámica
-                        if (map.getSource('back-trajectory-source')) {
-                            map.getSource('back-trajectory-source').setData({ type: 'FeatureCollection', features: [] });
-                        }
-                        backTrajectoryPoints = [];
+                    // Para focos emisores siempre mostramos sus estelas de dispersión (forward) y borramos la dinámica
+                    if (map.getSource('back-trajectory-source')) {
+                        map.getSource('back-trajectory-source').setData({ type: 'FeatureCollection', features: [] });
                     }
+                    backTrajectoryPoints = [];
                 }
             } 
             // 3. Si hay una sonda de viento activa
@@ -2134,56 +2129,35 @@ def generate_3d_map():
                 map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.85);
                 map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.85);
             } else if (activeSourceId !== null) {
-                const isBackward = (activeAnalysisMode === 'de-donde-viene');
-                if (isBackward) {
-                    // Modo de-donde-viene (foco emisor): atenuar estelas precalculadas de todos los focos
-                    map.setPaintProperty('urban-trajectories-layer', 'line-width', 1.0);
-                    map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 0.08);
-                    map.setPaintProperty('industrial-trajectories-layer', 'line-width', 1.0);
+                // Para focos emisores siempre resaltamos su estela de dispersión (forward) en ambos modos
+                if (activeSourceType === 'urban') {
+                    map.setPaintProperty('urban-trajectories-layer', 'line-width', 
+                        ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
+                    );
+                    map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 
+                        ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
+                    );
+                    map.setPaintProperty('industrial-trajectories-layer', 'line-width', ['get', 'width']);
                     map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 0.08);
                     
-                    if (activeSourceType === 'urban') {
-                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
-                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
-                        );
-                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.15);
-                    } else {
-                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
-                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
-                        );
-                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
-                    }
+                    map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
+                        ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                    );
+                    map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.15);
                 } else {
-                    // Modo hacia-donde-va (foco emisor seleccionado): resaltar su estela precalculada
-                    if (activeSourceType === 'urban') {
-                        map.setPaintProperty('urban-trajectories-layer', 'line-width', 
-                            ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
-                        );
-                        map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 
-                            ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
-                        );
-                        map.setPaintProperty('industrial-trajectories-layer', 'line-width', ['get', 'width']);
-                        map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 0.08);
-                        
-                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
-                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
-                        );
-                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.15);
-                    } else {
-                        map.setPaintProperty('industrial-trajectories-layer', 'line-width', 
-                            ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
-                        );
-                        map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 
-                            ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
-                        );
-                        map.setPaintProperty('urban-trajectories-layer', 'line-width', ['get', 'width']);
-                        map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 0.08);
-                        
-                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
-                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
-                        );
-                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
-                    }
+                    map.setPaintProperty('industrial-trajectories-layer', 'line-width', 
+                        ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
+                    );
+                    map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 
+                        ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
+                    );
+                    map.setPaintProperty('urban-trajectories-layer', 'line-width', ['get', 'width']);
+                    map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 0.08);
+                    
+                    map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
+                        ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                    );
+                    map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
                 }
             } else if (activeStationId !== null) {
                 if (activeAnalysisMode === 'de-donde-viene') {
@@ -2412,12 +2386,12 @@ def generate_3d_map():
 
                             // --- FASE 3: Aislamiento de partículas ---
                             if (activeSourceId !== null) {
-                                if (activeAnalysisMode === 'hacia-donde-va' && stationId === activeSourceId && traj.type === activeSourceType) {
-                                    // Foco seleccionado en modo hacia-donde-va: más grande y brillante
+                                if (stationId === activeSourceId && traj.type === activeSourceType) {
+                                    // Foco seleccionado: más grande y brillante en ambos modos
                                     radius = radius * 1.25;
                                     opacity = Math.min(opacity * 1.3, 0.95);
                                 } else {
-                                    // Focos no seleccionados o en modo de-donde-viene: atenuar a 10%
+                                    // Focos no seleccionados: atenuar a 10%
                                     opacity = opacity * 0.10;
                                 }
                             } else if (activeStationId !== null) {
