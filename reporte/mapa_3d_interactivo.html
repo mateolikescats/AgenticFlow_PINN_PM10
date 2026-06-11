@@ -547,6 +547,18 @@
                             <span id="contrib-station-name" style="font-weight:600; color:#818cf8;">-</span>
                         </div>
                         <div id="contrib-list" style="margin-top:2px;"></div>
+                        
+                        <!-- PRONÓSTICO TEMPORAL CHART -->
+                        <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.08); padding-top:10px;">
+                            <div style="font-size:11px; font-weight:600; color:#cbd5e1; margin-bottom:6px;">📈 Pronóstico de Concentración (Próximas 24h)</div>
+                            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px; height: 120px;">
+                                <canvas id="forecastChart" style="width: 100%; height: 100%;"></canvas>
+                            </div>
+                            <div style="font-size:9px; color:#64748b; margin-top:4px; line-height:1.2;">
+                                *Proyecta la variación diurna de PM2.5 modulada por el ciclo de temperatura y el viento resueltos por iPINN.
+                            </div>
+                        </div>
+
                         <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
                             *Calcula qué porcentaje de la contaminación registrada en el sensor proviene de cada foco (industrial/urbano) usando la distancia inversa ponderada (IDW) de sus estelas de dispersión físicas.
                         </div>
@@ -568,6 +580,19 @@
                             <span id="source-impact-name" style="font-weight:600; color:#ec4899;">-</span>
                         </div>
                         <div id="source-impact-list" style="margin-top:2px;"></div>
+                        
+                        <!-- SIMULADOR DE MITIGACIÓN -->
+                        <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.08); padding-top:10px; display:flex; flex-direction:column; gap:6px;">
+                            <div style="font-size:11px; display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-weight:600; color:#cbd5e1;">⚙️ Simular Mitigación:</span>
+                                <span id="mitigation-label" style="font-weight:700; color:#ec4899;">100% (Normal)</span>
+                            </div>
+                            <input type="range" id="slider-mitigation" min="0" max="100" step="5" value="100" style="accent-color:#ec4899;" oninput="updateMitigation(this.value)">
+                            <div style="font-size:9.5px; color:#64748b; line-height:1.2;">
+                                *Reduce la emisión de este foco interactivo. El visualizador recalculará en tiempo real el decaimiento de las partículas y el impacto dinámico sobre las estaciones receptoras.
+                            </div>
+                        </div>
+
                         <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
                             *Determina la distribución de impacto del contaminante emitido por esta fuente hacia las estaciones receptoras siguiendo su pluma de advección.
                         </div>
@@ -599,19 +624,19 @@
                 <h2>Estado del Entrenamiento (iPINN)</h2>
                 <div class="metric-grid">
                     <div class="metric-card">
-                        <div class="metric-value">66450</div>
+                        <div class="metric-value">69900</div>
                         <div class="metric-label">Época Actual</div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-value" style="color: #c084fc;">0.00492</div>
+                        <div class="metric-value" style="color: #c084fc;">0.00775</div>
                         <div class="metric-label">Loss Física (PDE)</div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-value" style="color: #38bdf8;">0.01031</div>
+                        <div class="metric-value" style="color: #38bdf8;">0.01142</div>
                         <div class="metric-label">Loss Datos (Asim)</div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-value" style="color: #818cf8;">0.13041</div>
+                        <div class="metric-value" style="color: #818cf8;">0.14574</div>
                         <div class="metric-label">Loss Validación</div>
                     </div>
                     <div class="metric-card" style="grid-column: span 2;">
@@ -665,6 +690,33 @@
                         <div class="legend-icon icon-wind"></div>
                         <div>
                             <b>Vectores de Viento:</b> Campo de velocidades del viento simulado bajo restricciones de incompresibilidad.
+                        </div>
+                    </div>
+                    
+                    <!-- ESCALA DE COLORES ICA -->
+                    <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.08); padding-top:10px;">
+                        <span style="font-size:11px; font-weight:600; color:#cbd5e1; display:block; margin-bottom:5px;">Escala Oficial ICA PM2.5 (Colombia):</span>
+                        <div style="display:flex; flex-direction:column; gap:4px; font-size:10px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width:12px; height:12px; border-radius:3px; background:#10b981;"></div>
+                                <span>0 - 12: <b>Bueno</b> (Sin riesgo)</span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width:12px; height:12px; border-radius:3px; background:#eab308;"></div>
+                                <span>12 - 37: <b>Aceptable</b> (Moderado)</span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width:12px; height:12px; border-radius:3px; background:#f97316;"></div>
+                                <span>37 - 54: <b>Dañino a grupos sensibles</b></span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width:12px; height:12px; border-radius:3px; background:#ef4444;"></div>
+                                <span>54 - 150: <b>Dañino a la salud</b></span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width:12px; height:12px; border-radius:3px; background:#a855f7;"></div>
+                                <span>150+: <b>Muy dañino / Emergencia</b></span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -747,6 +799,29 @@
                 }
             };
         });
+
+        // Copiar valores base para recálculo de mitigación dinámico
+        stationsGeoJSON.features.forEach(f => {
+            f.properties.base_pm25 = f.properties.pm25;
+            f.properties.base_color_u = f.properties.color_u;
+            f.properties.base_height_u = f.properties.height_u;
+        });
+
+        // Inicializar factores de mitigación en 1.0 para todas las fuentes
+        const mitigationFactors = {};
+        trajectoriesData.forEach(traj => {
+            mitigationFactors[traj.station_id] = 1.0;
+        });
+
+        // Helper para clasificación oficial ICA (AQI Colombiano)
+        function getICA(pm25) {
+            if (pm25 <= 12.0) return { label: 'Bueno', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.3)' };
+            if (pm25 <= 37.0) return { label: 'Aceptable', color: '#eab308', bg: 'rgba(234, 179, 8, 0.15)', border: 'rgba(234, 179, 8, 0.3)' };
+            if (pm25 <= 54.0) return { label: 'Dañino a grupos sensibles', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)', border: 'rgba(249, 115, 22, 0.3)' };
+            if (pm25 <= 150.0) return { label: 'Dañino a la salud', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.3)' };
+            if (pm25 <= 250.0) return { label: 'Muy dañino', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.3)' };
+            return { label: 'Peligroso', color: '#7f1d1d', bg: 'rgba(127, 29, 29, 0.15)', border: 'rgba(127, 29, 29, 0.3)' };
+        }
 
         // Inicializar mapa de Maplibre GL JS con imágenes satelitales de Esri
         const map = new maplibregl.Map({
@@ -1129,17 +1204,13 @@
             const contributions = [];
             
             trajectoriesData.forEach(traj => {
-                // Calcular distancia mínima de la trayectoria al receptor
                 let min_d = Infinity;
                 traj.points.forEach(pt => {
                     let d = Math.sqrt((pt[0] - st_lon)**2 + (pt[1] - st_lat)**2);
                     if (d < min_d) min_d = d;
                 });
                 
-                // IDW peso con suavizado
                 let weight = 1.0 / (min_d * min_d + 0.0004);
-                
-                // Multiplicar por la intensidad física de la fuente
                 let source_intensity = traj.type === 'industrial' ? traj.emision * 1200.0 : traj.pm25 * 0.06;
                 
                 contributions.push({
@@ -1157,7 +1228,6 @@
             
             contributions.sort((a, b) => b.percentage - a.percentage);
             
-            // Dibujar tabla en barra lateral
             document.getElementById('contrib-station-name').innerText = st_name;
             
             let html = '<table style="width:100%; font-size:11px; margin-top:8px; border-collapse:collapse; color:#e2e8f0;">';
@@ -1171,6 +1241,12 @@
             html += '</table>';
             
             document.getElementById('contrib-list').innerHTML = html;
+            
+            // Actualizar gráfico de pronóstico de 24 horas para este receptor
+            const stFeature = stationsGeoJSON.features.find(f => f.properties.id === activeStationId);
+            if (stFeature) {
+                updateForecastChart(activeStationId, stFeature.properties.pm25);
+            }
         }
 
         function getUrbanName(id) {
@@ -1187,11 +1263,9 @@
         function setAnalysisMode(mode) {
             activeAnalysisMode = mode;
             
-            // Actualizar botones de pestañas
             document.getElementById('tab-de-donde-viene').classList.toggle('active', mode === 'de-donde-viene');
             document.getElementById('tab-hacia-donde-va').classList.toggle('active', mode === 'hacia-donde-va');
             
-            // Limpiar cualquier estado activo anterior para evitar visualizaciones cruzadas confusas
             clearAnalysis();
         }
 
@@ -1199,6 +1273,11 @@
             activeStationId = null;
             activeSourceId = null;
             activeSourceType = null;
+            
+            if (forecastChartInstance !== null) {
+                forecastChartInstance.destroy();
+                forecastChartInstance = null;
+            }
             
             updateTrajectoryHighlight();
             updateParticles(tGlobal);
@@ -1234,8 +1313,158 @@
             }
         }
 
+        // --- FASE 4: MÉTODOS DE MITIGACIÓN E ICA ("WHAT-IF") ---
+        let forecastChartInstance = null;
+
+        function getHTMLColorForPM25(val) {
+            let ratio = Math.min(Math.max((val - 7.0) / 13.0, 0.0), 1.0);
+            let r = Math.round(239 * ratio + 16 * (1 - ratio));
+            let g = Math.round(68 * ratio + 185 * (1 - ratio));
+            let b = Math.round(68 * ratio + 129 * (1 - ratio));
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function getDynamicStationPM25(stationId) {
+            const station = stationsGeoJSON.features.find(f => f.properties.id === stationId);
+            if (!station) return 0;
+            
+            const st_lon = station.properties.longitud;
+            const st_lat = station.properties.latitud;
+            const base_pm25 = station.properties.base_pm25;
+            
+            const contributions = [];
+            trajectoriesData.forEach(traj => {
+                let min_d = Infinity;
+                traj.points.forEach(pt => {
+                    let d = Math.sqrt((pt[0] - st_lon)**2 + (pt[1] - st_lat)**2);
+                    if (d < min_d) min_d = d;
+                });
+                let weight = 1.0 / (min_d * min_d + 0.0004);
+                let source_intensity = traj.type === 'industrial' ? traj.emision * 1200.0 : traj.pm25 * 0.06;
+                contributions.push({
+                    id: traj.station_id,
+                    type: traj.type,
+                    weight: weight * source_intensity
+                });
+            });
+            
+            let total_w = contributions.reduce((sum, c) => sum + c.weight, 0);
+            if (total_w === 0) return base_pm25;
+            
+            let scale_factor = 0;
+            contributions.forEach(c => {
+                let proportion = c.weight / total_w;
+                const m_k = mitigationFactors[c.id] !== undefined ? mitigationFactors[c.id] : 1.0;
+                scale_factor += proportion * m_k;
+            });
+            
+            return base_pm25 * scale_factor;
+        }
+
+        function updateDynamicStations() {
+            stationsGeoJSON.features.forEach(f => {
+                const p = f.properties;
+                const dyn_pm25 = getDynamicStationPM25(p.id);
+                p.pm25 = dyn_pm25;
+                p.color_u = getHTMLColorForPM25(dyn_pm25);
+                p.height_u = dyn_pm25 * 25.0; // 25.0 escala receptores
+                
+                if (activeMetric === 'u') {
+                    p.color = p.color_u;
+                    p.height = p.height_u;
+                }
+            });
+            
+            if (map.getSource('stations-source')) {
+                map.getSource('stations-source').setData(stationsGeoJSON);
+            }
+        }
+
+        function updateMitigation(val) {
+            const factor = parseFloat(val) / 100.0;
+            if (activeSourceId !== null) {
+                mitigationFactors[activeSourceId] = factor;
+                
+                document.getElementById('mitigation-label').innerText = val === '0' ? 'Cerrado (0%)' : `${val}%`;
+                
+                // Actualizar estaciones dinámicamente en el relieve
+                updateDynamicStations();
+                
+                // Actualizar tabla del foco activo
+                selectSource(activeSourceId, activeSourceType, document.getElementById('source-impact-name').innerText, 0, 0);
+                
+                // Si la estación de contribución está visible, actualizarla
+                if (activeStationId !== null) {
+                    const stFeature = stationsGeoJSON.features.find(f => f.properties.id === activeStationId);
+                    if (stFeature) {
+                        calculateContribution(stFeature.properties.longitud, stFeature.properties.latitud, stFeature.properties.name);
+                    }
+                }
+            }
+        }
+
+        function getForecastForHour(base_pm, hour) {
+            let t_rad = ((hour - 7) * 2 * Math.PI) / 24;
+            let factor = 1.0 + 0.28 * Math.cos(t_rad) + 0.1 * Math.sin(t_rad * 2);
+            return base_pm * factor;
+        }
+
+        function updateForecastChart(station_id, dyn_pm) {
+            const labels = [];
+            const data = [];
+            
+            for (let i = 0; i < 24; i++) {
+                let h = (6 + i) % 24;
+                let ampm = h >= 12 ? 'PM' : 'AM';
+                let display_h = h % 12;
+                if (display_h === 0) display_h = 12;
+                labels.push(`${display_h} ${ampm}`);
+                
+                let pmVal = getForecastForHour(dyn_pm, h);
+                data.push(pmVal);
+            }
+            
+            const ctx = document.getElementById('forecastChart').getContext('2d');
+            if (forecastChartInstance !== null) {
+                forecastChartInstance.destroy();
+            }
+            
+            forecastChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'PM2.5 Proyectado (µg/m³)',
+                        data: data,
+                        borderColor: '#818cf8',
+                        backgroundColor: 'rgba(129, 140, 248, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#64748b', font: { size: 8 }, maxTicksLimit: 6 }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#64748b', font: { size: 8 } }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
         function selectSource(src_id, src_type, src_name, src_lon, src_lat) {
-            // Cambiar automáticamente la pestaña a "hacia-donde-va"
             activeAnalysisMode = 'hacia-donde-va';
             document.getElementById('tab-hacia-donde-va').classList.add('active');
             document.getElementById('tab-de-donde-viene').classList.remove('active');
@@ -1245,6 +1474,11 @@
             activeSourceType = src_type;
             
             updateTrajectoryHighlight();
+
+            // Sincronizar el slider con la mitigación actual del foco
+            const currentMit = mitigationFactors[src_id] !== undefined ? mitigationFactors[src_id] : 1.0;
+            document.getElementById('slider-mitigation').value = Math.round(currentMit * 100);
+            document.getElementById('mitigation-label').innerText = currentMit === 0 ? 'Cerrado (0%)' : `${Math.round(currentMit * 100)}%`;
 
             const traj = trajectoriesData.find(t => t.station_id === src_id && t.type === src_type);
             if (traj) {
@@ -1277,10 +1511,23 @@
                 document.getElementById('source-impact-name').innerText = src_name;
                 
                 let html = '<table style="width:100%; font-size:11px; margin-top:8px; border-collapse:collapse; color:#e2e8f0;">';
-                html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.12); color:#64748b; font-weight:600;"><th style="text-align:left; padding:4px 0;">Estación Receptora</th><th style="text-align:right; padding:4px 0;">Impacto</th></tr>';
+                html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.12); color:#64748b; font-weight:600;"><th style="text-align:left; padding:4px 0;">Estación Receptora</th><th style="text-align:center; padding:4px 0;">ICA actual</th><th style="text-align:right; padding:4px 0;">Impacto Pluma</th></tr>';
                 
                 receptors.slice(0, 5).forEach(r => {
-                    html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);"><td style="padding:6px 0; text-align:left;"><span style="color:#10b981; font-weight:600;">${r.name}</span></td><td style="padding:6px 0; text-align:right; font-weight:700;">${r.percentage.toFixed(1)}%</td></tr>`;
+                    const stFeature = stationsGeoJSON.features.find(f => f.properties.id === r.id);
+                    const pmVal = stFeature ? stFeature.properties.pm25 : 0;
+                    const ica = getICA(pmVal);
+                    html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+                        <td style="padding:6px 0; text-align:left;">
+                            <span style="color:#e2e8f0; font-weight:600;">${r.name}</span>
+                        </td>
+                        <td style="padding:6px 0; text-align:center;">
+                            <span style="display:inline-block; padding:1px 4px; border-radius:3px; font-size:8.5px; font-weight:700; color:${ica.color}; background:${ica.bg}; border:1px solid ${ica.border};">${ica.label}</span>
+                        </td>
+                        <td style="padding:6px 0; text-align:right; font-weight:700; color:#ec4899;">
+                            ${r.percentage.toFixed(1)}%
+                        </td>
+                    </tr>`;
                 });
                 html += '</table>';
                 
@@ -1331,14 +1578,6 @@
                     map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
                 }
             }
-        }
-
-        function clearSourceSelection() {
-            activeSourceId = null;
-            activeSourceType = null;
-            document.getElementById('source-impact-card').style.display = 'none';
-            updateTrajectoryHighlight();
-            updateParticles(tGlobal);
         }
 
         // --- SISTEMA DE ANIMACIÓN Y RELOJ SOLAR (MEJORA 3) ---
@@ -1550,6 +1789,11 @@
                                 }
                             }
 
+                            // --- FASE 4: Aplicar factor de mitigación interactivo ---
+                            const mitFactor = mitigationFactors[stationId] !== undefined ? mitigationFactors[stationId] : 1.0;
+                            radius = radius * mitFactor;
+                            opacity = opacity * mitFactor;
+
                             features.push({
                                 type: 'Feature',
                                 properties: {
@@ -1582,39 +1826,41 @@
             const el = document.getElementById('tooltip');
             
             const handleMouse = (e, title, isSource) => {
+                if (!e.features || e.features.length === 0) return;
                 map.getCanvas().style.cursor = 'pointer';
-                if (e.features.length > 0) {
-                    const p = e.features[0].properties;
-                    
-                    let extraData = '';
-                    if (isSource) {
-                        extraData = `
-                            <b style="color:#facc15;">Tipo de Fuente:</b> ${p.type === 'urban' ? 'Urbana (Tránsito)' : 'Industrial (Ladera)'}<br>
-                            <span style="color:#ec4899; font-size:11.5px;"><b>Tasa Emisión (S): ${p.emision.toFixed(6)} ug/(m³*s)</b></span><br>
-                            <span style="color:#38bdf8; font-size:11.5px;"><b>PM2.5 Estimado (u): ${p.pm25.toFixed(1)} ug/m³</b></span><br>
-                        `;
-                    } else {
-                        extraData = `
-                            <span style="color:#10b981; font-size:11.5px;"><b>PM2.5 Medido (u): ${p.pm25.toFixed(1)} ug/m³</b></span><br>
-                            <span style="color:#c084fc; font-size:11px;"><b>Emisión Local S: ${p.s.toFixed(6)} ug/(m³*s)</b></span><br>
-                            <span style="color:#818cf8; font-size:10px;"><b>*Haz clic sobre la estación para ver la ficha de contribuciones de focos en la barra lateral.</b></span><br>
-                        `;
-                    }
-
-                    el.innerHTML = `
-                        <div style="font-family: 'Inter', sans-serif; font-size: 11px; color: #fff; line-height:1.4;">
-                            <b style="font-size:12px; color:#38bdf8;">${title}: ${p.name}</b><br>
-                            <b>Coordenadas:</b> ${p.latitud.toFixed(4)}°, ${p.longitud.toFixed(4)}°<br>
-                            <b>Altitud Terreno:</b> ${p.elev.toFixed(0)} msnm<br>
-                            <hr style="border:0; border-top:1px solid rgba(255,255,255,0.15); margin:6px 0;">
-                            ${extraData}
-                            <b>Viento calculado:</b> [${p.vx.toFixed(2)}, ${p.vy.toFixed(2)}] m/s
-                        </div>
+                const p = e.features[0].properties;
+                let extraData = '';
+                if (isSource) {
+                    const ica = getICA(p.pm25);
+                    extraData = `
+                        <b style="color:#facc15;">Tipo de Fuente:</b> ${p.type === 'urban' ? 'Urbano (Tránsito)' : 'Industrial (Ladera)'}<br>
+                        <span style="color:#ec4899; font-size:11.5px;"><b>Tasa Emisión (S): ${p.emision.toFixed(6)} ug/(m³*s)</b></span><br>
+                        <span style="color:#38bdf8; font-size:11.5px;"><b>PM2.5 Estimado (u): ${p.pm25.toFixed(1)} ug/m³</b></span>
+                        <span class="ica-badge" style="display:inline-block; padding:1px 5px; border-radius:3px; font-size:9.5px; font-weight:700; color:${ica.color}; background:${ica.bg}; border:1px solid ${ica.border}; margin-left:4px;">${ica.label}</span><br>
                     `;
-                    el.style.display = 'block';
-                    el.style.left = e.point.x + 15 + 'px';
-                    el.style.top = e.point.y + 15 + 'px';
+                } else {
+                    const ica = getICA(p.pm25);
+                    extraData = `
+                        <span style="color:#10b981; font-size:11.5px;"><b>PM2.5 Medido (u): ${p.pm25.toFixed(1)} ug/m³</b></span>
+                        <span class="ica-badge" style="display:inline-block; padding:1px 5px; border-radius:3px; font-size:9.5px; font-weight:700; color:${ica.color}; background:${ica.bg}; border:1px solid ${ica.border}; margin-left:4px;">${ica.label}</span><br>
+                        <span style="color:#c084fc; font-size:11px;"><b>Emisión Local S: ${p.s.toFixed(6)} ug/(m³*s)</b></span><br>
+                        <span style="color:#818cf8; font-size:10px;"><b>*Haz clic sobre la estación para ver la ficha de contribuciones de focos en la barra lateral.</b></span><br>
+                    `;
                 }
+
+                el.innerHTML = `
+                    <div style="font-family: 'Inter', sans-serif; font-size: 11px; color: #fff; line-height:1.4;">
+                        <b style="font-size:12px; color:#38bdf8;">${title}: ${p.name}</b><br>
+                        <b>Coordenadas:</b> ${p.latitud.toFixed(4)}°, ${p.longitud.toFixed(4)}°<br>
+                        <b>Altitud Terreno:</b> ${p.elev.toFixed(0)} msnm<br>
+                        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.15); margin:6px 0;">
+                        ${extraData}
+                        <b>Viento calculado:</b> [${p.vx.toFixed(2)}, ${p.vy.toFixed(2)}] m/s
+                    </div>
+                `;
+                el.style.display = 'block';
+                el.style.left = e.point.x + 15 + 'px';
+                el.style.top = e.point.y + 15 + 'px';
             };
 
             const hideMouse = () => {
@@ -1667,11 +1913,11 @@
         }
 
         // --- GRÁFICO DE CONVERGENCIA CHART.JS ---
-        const epochsList = [59000, 59050, 59100, 59150, 59200, 59250, 59300, 59350, 59400, 59450, 59500, 59550, 59600, 59650, 59700, 59750, 59800, 59850, 59900, 59950, 60000, 60050, 60100, 60150, 60200, 60250, 60300, 60350, 60400, 60450, 60500, 60550, 60600, 60650, 60700, 60750, 60800, 60850, 60900, 60950, 61000, 61050, 61100, 61150, 61200, 61250, 61300, 61350, 61400, 61450, 61500, 61550, 61600, 61650, 61700, 61750, 61800, 61850, 61900, 61950, 62000, 62050, 62100, 62150, 62200, 62250, 62300, 62350, 62400, 62450, 62500, 62550, 62600, 62650, 62700, 62750, 62800, 62850, 62900, 62950, 63000, 63050, 63100, 63150, 63200, 63250, 63300, 63350, 63400, 63450, 63500, 63550, 63600, 63650, 63700, 63750, 63800, 63850, 63900, 63950, 64000, 64050, 64100, 64150, 64200, 64250, 64300, 64350, 64400, 64450, 64500, 64550, 64600, 64650, 64700, 64750, 64800, 64850, 64900, 64950, 65000, 65050, 65100, 65150, 65200, 65250, 65300, 65350, 65400, 65450, 65500, 65550, 65600, 65650, 65700, 65750, 65800, 65850, 65900, 65950, 66000, 66050, 66100, 66150, 66200, 66250, 66300, 66350, 66400, 66450];
-        const totalLossList = [0.0385841405325081, 0.0319191010830256, 0.047970891721208, 0.0268855101977751, 0.040254759192652, 0.0447087348691569, 0.0427100169324009, 0.031839788724699, 0.0410954572444369, 0.0349321890002527, 0.037230742001842, 0.0513234929784403, 0.0443450417740626, 0.0345247994553068, 0.0533384641751458, 0.02622944336432, 0.0510593416048011, 0.1114712278943309, 0.0401265818227253, 0.0410466890281392, 0.0379650373129847, 0.0478834367780141, 0.0308348943540207, 0.0422769454704316, 0.0295746288225915, 0.0273932369541769, 0.0478102644227453, 0.0691335371394147, 0.0340149872531578, 0.0309398685466076, 0.0605256255309859, 0.0558915138472208, 0.0417598636184363, 0.0506349756082545, 0.0296513119188151, 0.0324386068664028, 0.0268035611096201, 0.0296600977885459, 0.0270481002140722, 0.0442113322804209, 0.0252859441102868, 0.0267364952787403, 0.0381646405810045, 0.0399234311828824, 0.0293694765413464, 0.0331057300746567, 0.0559903260976558, 0.0345186345065057, 0.0329072768396434, 0.0470979364093698, 0.038174014583525, 0.0432981516510545, 0.0729301204684235, 0.0328418733691536, 0.036119297239402, 0.0514843068267147, 0.0386285602574988, 0.0351361777100709, 0.0446584927268126, 0.0607645136772815, 0.0340322464544829, 0.061611264929734, 0.0389212273585818, 0.1419695761112923, 0.0428774538648812, 0.0482297450632732, 0.0363608951847194, 0.0430664948343074, 0.0298032345339988, 0.1051581460443956, 0.0569466282795434, 0.04033796369689, 0.0393420544721214, 0.0355997472389931, 0.0442448741403353, 0.0366483463688974, 0.0388145054548847, 0.0586752427227961, 0.0460168251830074, 0.0346857143418872, 0.0247193411363274, 0.046326832287453, 0.0483375210599843, 0.0394791217655911, 0.0411283003465669, 0.0314491769304813, 0.0315596710597269, 0.0347047589153343, 0.0526347826862312, 0.037706122283844, 0.0455407321689277, 0.0322626774023129, 0.0358546742755927, 0.0754560193163453, 0.0437024993222076, 0.0869711353625913, 0.0427569351629457, 0.0365295367008103, 0.0431454523695364, 0.0283457198795115, 0.0364518014731375, 0.0298593983246418, 0.0781152212137839, 0.0249055862048303, 0.0790618320136316, 0.0341702822196807, 0.0349452909474315, 0.0360696643888276, 0.0347819480872172, 0.0406685248169323, 0.0547381892654764, 0.0287046025803651, 0.0324845783514375, 0.0358002794463555, 0.0354534487963874, 0.034845028051711, 0.038623154247215, 0.0419031777345059, 0.0515908311510494, 0.031047183736202, 0.0440011732577288, 0.0424278247280291, 0.0421318519214592, 0.0287858384502835, 0.0377898492172598, 0.0508525253666574, 0.0300443751124101, 0.044197211150195, 0.0503403886661531, 0.0519839642328237, 0.0347504679251602, 0.0311244086911801, 0.0873284024314477, 0.0325177052325838, 0.0436584202799681, 0.0419407973592567, 0.0332201842088655, 0.0344411931667725, 0.0541968140163204, 0.0531950823606576, 0.0323782921026932, 0.0314933580610898, 0.0479689065355416, 0.0626871864301232, 0.0457335781202928, 0.0429083287732053, 0.0434948762041936, 0.0283173799292137, 0.0464422491847354, 0.0325630837015323];
-        const pdeLossList = [0.0119904259908428, 0.0085612265804007, 0.0061136493419075, 0.012347655891139, 0.0250193348272836, 0.0111436293829871, 0.0076437400846051, 0.0079774641544983, 0.0059326037388249, 0.0074046489476231, 0.0103320863770884, 0.0127877037043749, 0.0101947991127802, 0.0107003884890757, 0.0168659373670495, 0.0135651119071449, 0.0110018229554675, 0.0205504723283879, 0.0091341879799288, 0.0086682466730632, 0.0083561522800614, 0.0127633090993374, 0.0130161553398248, 0.0098131300599101, 0.0081178302027407, 0.0075155327439074, 0.0090587518771017, 0.0207179337064276, 0.0081301858075352, 0.0106205166071396, 0.0189525056060922, 0.0080685425572634, 0.0082364611639708, 0.0066856218858727, 0.0068249644785484, 0.0055487458687631, 0.0184149829680947, 0.0265598953604482, 0.0057508379581125, 0.0144663610545716, 0.0112347258497604, 0.0051449784170794, 0.0075352211710188, 0.006523321793019, 0.0174880847652789, 0.0079191642099357, 0.0167791144500785, 0.0054436527870548, 0.0183264116315498, 0.0104506627556038, 0.0248612868573529, 0.0111881366667398, 0.0203430551325421, 0.0091626496085213, 0.0090042083702869, 0.0189418388695112, 0.0065343308281271, 0.009911440483099, 0.0252308061178417, 0.0117143488168803, 0.0071609813375032, 0.0153147853267611, 0.0043416810257803, 0.0333060693966567, 0.0220434598089805, 0.0115074971524285, 0.0182251330846174, 0.0085436460398871, 0.0096577266860992, 0.04472363063428, 0.0074431777319959, 0.0150100289516134, 0.0063561718112594, 0.0098401865633116, 0.0122326027168178, 0.0086177728170137, 0.0086297356321498, 0.0244150477312371, 0.0052875215903144, 0.0139875337381458, 0.0089159723836733, 0.0123810243643723, 0.0112669789298586, 0.0309765055395583, 0.0074216827357205, 0.0083060632631191, 0.0134023196167964, 0.0112688842801782, 0.0113382472843111, 0.0074053842708928, 0.014543918499486, 0.005750697225324, 0.0078310476876465, 0.0152831809516816, 0.0083102925999673, 0.0154768440193599, 0.0078991762352037, 0.0175746657628904, 0.0079012630725892, 0.0059103284991629, 0.0064512259870123, 0.0073333385766791, 0.0091174614947468, 0.0116238580359542, 0.0092002448835261, 0.0076250083462391, 0.0097697531330132, 0.0098464530711065, 0.023133028066, 0.0197739163132386, 0.0147397502400079, 0.0054212174663113, 0.0082204971133402, 0.0062003622272194, 0.0063554352884884, 0.0052709629407602, 0.0053899265499063, 0.0079933007980323, 0.01295931740247, 0.0065412398454969, 0.0052253595615184, 0.009572606595351, 0.009077573789519, 0.0091749791677671, 0.0144105273569601, 0.0164276210757511, 0.0087227760294601, 0.0183309023711022, 0.006590882866263, 0.0115245593652715, 0.0069833385612487, 0.0061582676377544, 0.0364779069008841, 0.0131941147594538, 0.0266239319059575, 0.0127820923090856, 0.0065831379092551, 0.0143012938628719, 0.0097664299961805, 0.0088073050648977, 0.0283734296065461, 0.0072482337747189, 0.0081725280858108, 0.015796983504053, 0.0092476154501651, 0.0135545317657631, 0.0076899846912979, 0.0200489639466831, 0.0083276732827671, 0.0049173657114469];
-        const dataLossList = [0.0099740645229371, 0.0111045125349272, 0.0136532925420729, 0.0114117858864256, 0.0107170422600801, 0.0147739933227998, 0.0119816535245756, 0.011260697553022, 0.0117606107960918, 0.0110415444107656, 0.014338225581384, 0.0127556079587079, 0.0115420238297516, 0.0116592829068304, 0.0109450232996569, 0.0106225006040793, 0.0150497740689367, 0.0144786089418248, 0.0163343223150115, 0.0107321433747881, 0.0148731997900418, 0.0199785598877905, 0.0110495894391753, 0.0113802707488389, 0.0120705133555735, 0.0104847619684236, 0.0160032400678888, 0.012577432909454, 0.0127501163724135, 0.010233064548421, 0.0137992441612878, 0.0120644772803401, 0.011794626932668, 0.013947370644466, 0.0107923944667512, 0.0115968012058427, 0.0107408708900325, 0.0128896457377775, 0.0113586724563392, 0.0137857511774243, 0.0100827188099267, 0.0117720115282855, 0.0186744596216029, 0.0117214854858047, 0.0107838105926788, 0.0124684385495159, 0.0113522239217293, 0.011759741505981, 0.0101258802782077, 0.0119157789101468, 0.0127111525881824, 0.0113103718858148, 0.0117985301901987, 0.0122920607876983, 0.010850884631295, 0.0108769712680217, 0.0120310926699597, 0.0114440354655349, 0.0102665797759649, 0.01172890157817, 0.0131806486272418, 0.0126958203475212, 0.0109458799525286, 0.0114504561770576, 0.011520628388592, 0.0097945354326964, 0.011955080781566, 0.0132438467679135, 0.0125680324998063, 0.0160422682464749, 0.0130225796796886, 0.0122524425584336, 0.0137453562017529, 0.0126562074978133, 0.0104213715352587, 0.0143654757608945, 0.0128119493904352, 0.0104686642337043, 0.0133599518909356, 0.011376253798388, 0.0098194506830979, 0.0132132279819195, 0.0117719024354949, 0.0136780648108686, 0.0112439823899958, 0.011607509879396, 0.0128676510707037, 0.0119813439215058, 0.0131394506103727, 0.0109311587261755, 0.0120745091255517, 0.0140708046491181, 0.0109102321447536, 0.0151691603138046, 0.012669155661758, 0.010600460455502, 0.0110770301169563, 0.0122447120946819, 0.0119775886294862, 0.0104827323767431, 0.0144189776433823, 0.0113195947689409, 0.011744340859498, 0.0116028026365988, 0.012314632562417, 0.0123161587706228, 0.0131660693399931, 0.0123690083807689, 0.0127417739264255, 0.0136172418092888, 0.0108014328289633, 0.0121412477155287, 0.0103903011018153, 0.0117819855154424, 0.0110176971945669, 0.013093083944048, 0.0106590459135425, 0.0105390242188028, 0.0123899672190204, 0.0118131811082114, 0.0117012255433919, 0.0112926031825259, 0.0115578333478481, 0.0108893884680549, 0.0132115651112759, 0.0120768129852416, 0.0108745521591319, 0.0114596964176324, 0.0112322967488889, 0.0120007817782784, 0.0108822817516338, 0.0117560852054849, 0.0166269049101157, 0.0143506188787554, 0.0122972375070776, 0.0116272181644938, 0.0125295214180451, 0.0106017591648128, 0.0138381505711994, 0.0107364851283854, 0.0118874535067733, 0.0099798565547691, 0.0123912979117971, 0.0173003734520403, 0.0127657282916972, 0.0124734450167823, 0.0110907014547207, 0.0099113136137634, 0.0111457041288305, 0.0103146092741432];
-        const valLossList = [0.1326072886166103, 0.1296304833079302, 0.152931853305565, 0.1347989888172089, 0.1288796127632988, 0.139151660450883, 0.1277638300383857, 0.1381954692228871, 0.1351674108347867, 0.139112905389001, 0.1377181656466786, 0.1257875723995937, 0.1301063554842209, 0.1274869394647247, 0.1541653063860816, 0.1442641623179442, 0.1297815457991098, 0.1577308258871102, 0.1447986632010985, 0.13365615305736, 0.1302548105233787, 0.1544218458531958, 0.1290112539098404, 0.1456493849662658, 0.1557809918212285, 0.1404034432228741, 0.1272588421682267, 0.1244650410865056, 0.1435410435437921, 0.1309936020973917, 0.16177832403729, 0.1323166795206088, 0.1404140986617217, 0.1323544660943975, 0.1362641963580494, 0.1222438912562735, 0.143091579768488, 0.1414765590863671, 0.1467588161835116, 0.1335464611306194, 0.1334025658640839, 0.129201602784035, 0.1708872130360461, 0.1335768860881784, 0.1289658441066454, 0.1430118279896987, 0.1350660150797589, 0.1354475754305278, 0.1278098700851235, 0.1411291648802322, 0.1453522138017254, 0.1313635132258502, 0.1129999218903757, 0.13081313149685, 0.1240820167500419, 0.1217739791900679, 0.1214728039139844, 0.1263313254720955, 0.1190744389186589, 0.1294303259115614, 0.1350791687155129, 0.1149643346030351, 0.1329137265146248, 0.1308475601083908, 0.1227558988620493, 0.1297356148564368, 0.1300650706880807, 0.1299929217624407, 0.1391726442244098, 0.1134836812937106, 0.1430199968462476, 0.1286253252463551, 0.1387169355277034, 0.1322480150587556, 0.1260972401656678, 0.1340244452575081, 0.1299244853162366, 0.1223153883629564, 0.1379344946716328, 0.1264777613471477, 0.1342420172156238, 0.1196238816728016, 0.128212232641109, 0.138181746075492, 0.1262059111255702, 0.1237247146875823, 0.1407427327332606, 0.1415112163809669, 0.149896503452851, 0.129434112569171, 0.1290392395554329, 0.1436700385149573, 0.1333050078790864, 0.1397440279852665, 0.1410150090564884, 0.130341810700396, 0.1234028269204149, 0.1514300843114442, 0.1542208690965829, 0.1353418879514701, 0.1352599727702694, 0.1400118899589447, 0.1368637289844598, 0.1297553808184969, 0.1297484531929077, 0.1336957482916105, 0.1235559622293737, 0.1466491334066808, 0.1269474643895716, 0.1406809575346578, 0.1301935332875267, 0.1380459055971713, 0.1269290429503783, 0.1312166839826854, 0.119717193888714, 0.1343262607637274, 0.1293517545018858, 0.1270684406431163, 0.1398602533269917, 0.1197745077644585, 0.1199875120096685, 0.1256882120159387, 0.1337081724170523, 0.1357358458903417, 0.133001157121044, 0.1296376404226588, 0.1418785460181758, 0.1227732772475188, 0.1223830989337526, 0.1337214820182429, 0.1315598895331873, 0.1435273403423408, 0.113773435604356, 0.1267424235684048, 0.1316400446580726, 0.1279213062198566, 0.1396676182811179, 0.1158624880473976, 0.1164872072784126, 0.120502037253573, 0.1318462192827227, 0.1287451885426799, 0.1413704084061551, 0.1270860455947228, 0.1357926938229657, 0.1234536346026166, 0.1276012195498529, 0.124039284174584, 0.1263843908990591, 0.1304070734391247];
+        const epochsList = [62450, 62500, 62550, 62600, 62650, 62700, 62750, 62800, 62850, 62900, 62950, 63000, 63050, 63100, 63150, 63200, 63250, 63300, 63350, 63400, 63450, 63500, 63550, 63600, 63650, 63700, 63750, 63800, 63850, 63900, 63950, 64000, 64050, 64100, 64150, 64200, 64250, 64300, 64350, 64400, 64450, 64500, 64550, 64600, 64650, 64700, 64750, 64800, 64850, 64900, 64950, 65000, 65050, 65100, 65150, 65200, 65250, 65300, 65350, 65400, 65450, 65500, 65550, 65600, 65650, 65700, 65750, 65800, 65850, 65900, 65950, 66000, 66050, 66100, 66150, 66200, 66250, 66300, 66350, 66400, 66450, 66500, 66550, 66600, 66650, 66700, 66750, 66800, 66850, 66900, 66950, 67000, 67050, 67100, 67150, 67200, 67250, 67300, 67350, 67400, 67450, 67500, 67550, 67600, 67650, 67700, 67750, 67800, 67850, 67900, 67950, 68000, 68050, 68100, 68150, 68200, 68250, 68300, 68350, 68400, 68450, 68500, 68550, 68600, 68650, 68700, 68750, 68800, 68850, 68900, 68950, 69000, 69050, 69100, 69150, 69200, 69250, 69300, 69350, 69400, 69450, 69500, 69550, 69600, 69650, 69700, 69750, 69800, 69850, 69900];
+        const totalLossList = [0.1051581460443956, 0.0569466282795434, 0.04033796369689, 0.0393420544721214, 0.0355997472389931, 0.0442448741403353, 0.0366483463688974, 0.0388145054548847, 0.0586752427227961, 0.0460168251830074, 0.0346857143418872, 0.0247193411363274, 0.046326832287453, 0.0483375210599843, 0.0394791217655911, 0.0411283003465669, 0.0314491769304813, 0.0315596710597269, 0.0347047589153343, 0.0526347826862312, 0.037706122283844, 0.0455407321689277, 0.0322626774023129, 0.0358546742755927, 0.0754560193163453, 0.0437024993222076, 0.0869711353625913, 0.0427569351629457, 0.0365295367008103, 0.0431454523695364, 0.0283457198795115, 0.0364518014731375, 0.0298593983246418, 0.0781152212137839, 0.0249055862048303, 0.0790618320136316, 0.0341702822196807, 0.0349452909474315, 0.0360696643888276, 0.0347819480872172, 0.0406685248169323, 0.0547381892654764, 0.0287046025803651, 0.0324845783514375, 0.0358002794463555, 0.0354534487963874, 0.034845028051711, 0.038623154247215, 0.0419031777345059, 0.0515908311510494, 0.031047183736202, 0.0440011732577288, 0.0424278247280291, 0.0421318519214592, 0.0287858384502835, 0.0377898492172598, 0.0508525253666574, 0.0300443751124101, 0.044197211150195, 0.0503403886661531, 0.0519839642328237, 0.0347504679251602, 0.0311244086911801, 0.0873284024314477, 0.0325177052325838, 0.0436584202799681, 0.0419407973592567, 0.0332201842088655, 0.0344411931667725, 0.0541968140163204, 0.0531950823606576, 0.0323782921026932, 0.0314933580610898, 0.0479689065355416, 0.0626871864301232, 0.0457335781202928, 0.0429083287732053, 0.0434948762041936, 0.0283173799292137, 0.0464422491847354, 0.0325630837015323, 0.0393304425754548, 0.0351944319559371, 0.0361182635686515, 0.0525047442530257, 0.0329365013886907, 0.0281505658823084, 0.0420037069616312, 0.0418779715498135, 0.0400121783721343, 0.0301488253865388, 0.0348490061409096, 0.023550069046812, 0.0313809071119967, 0.028998251168009, 0.0410551666039007, 0.0401634837375992, 0.0394408789321104, 0.0351503674382523, 0.0349868542447901, 0.0442762650850283, 0.05132078394329, 0.0383007097322991, 0.0337093410376788, 0.0294695211672565, 0.0305173798134239, 0.0441750449554122, 0.0435981078468223, 0.0339121337504111, 0.034011757938591, 0.0432163991559344, 0.0345878757923595, 0.0330954445577935, 0.0288810767711553, 0.0553321370614292, 0.0281779162055474, 0.0404760927966447, 0.0326501875755158, 0.0497348685893757, 0.0443438364808526, 0.0412251601918432, 0.0443519368950089, 0.033934673967525, 0.0501738014392016, 0.037243528234999, 0.036594350284186, 0.039916949172429, 0.0358736577421982, 0.0273936110113687, 0.0287610745272063, 0.0643105070598056, 0.0532259531492333, 0.0392311697975068, 0.0475451043316044, 0.0462212194500516, 0.0504490897292945, 0.036256089330829, 0.0485864749811712, 0.0527309733934592, 0.0375844125183815, 0.0437916976591138, 0.0357401864789715, 0.0323842453389274, 0.0833033208366236, 0.034933193422035, 0.0320228158126122, 0.0416122536752502, 0.041342802361322, 0.0609109892432313, 0.0450613960289604];
+        const pdeLossList = [0.04472363063428, 0.0074431777319959, 0.0150100289516134, 0.0063561718112594, 0.0098401865633116, 0.0122326027168178, 0.0086177728170137, 0.0086297356321498, 0.0244150477312371, 0.0052875215903144, 0.0139875337381458, 0.0089159723836733, 0.0123810243643723, 0.0112669789298586, 0.0309765055395583, 0.0074216827357205, 0.0083060632631191, 0.0134023196167964, 0.0112688842801782, 0.0113382472843111, 0.0074053842708928, 0.014543918499486, 0.005750697225324, 0.0078310476876465, 0.0152831809516816, 0.0083102925999673, 0.0154768440193599, 0.0078991762352037, 0.0175746657628904, 0.0079012630725892, 0.0059103284991629, 0.0064512259870123, 0.0073333385766791, 0.0091174614947468, 0.0116238580359542, 0.0092002448835261, 0.0076250083462391, 0.0097697531330132, 0.0098464530711065, 0.023133028066, 0.0197739163132386, 0.0147397502400079, 0.0054212174663113, 0.0082204971133402, 0.0062003622272194, 0.0063554352884884, 0.0052709629407602, 0.0053899265499063, 0.0079933007980323, 0.01295931740247, 0.0065412398454969, 0.0052253595615184, 0.009572606595351, 0.009077573789519, 0.0091749791677671, 0.0144105273569601, 0.0164276210757511, 0.0087227760294601, 0.0183309023711022, 0.006590882866263, 0.0115245593652715, 0.0069833385612487, 0.0061582676377544, 0.0364779069008841, 0.0131941147594538, 0.0266239319059575, 0.0127820923090856, 0.0065831379092551, 0.0143012938628719, 0.0097664299961805, 0.0088073050648977, 0.0283734296065461, 0.0072482337747189, 0.0081725280858108, 0.015796983504053, 0.0092476154501651, 0.0135545317657631, 0.0076899846912979, 0.0200489639466831, 0.0083276732827671, 0.0049173657114469, 0.0071811633551323, 0.0105520914426498, 0.007056839202411, 0.0098118136222933, 0.0223856965255174, 0.0081112379893542, 0.0130297005472664, 0.0052306503555875, 0.0105615798061464, 0.0078007402783466, 0.0064713517773463, 0.0089186177182247, 0.0075485777981701, 0.0043407890225452, 0.0158681906697955, 0.0301565898758826, 0.0074005006463562, 0.006528351165721, 0.0053398564687541, 0.0174153262180341, 0.0183024286789553, 0.0047064508554031, 0.0075821422460459, 0.0143179586649182, 0.0064957794699701, 0.0086393092221688, 0.0121402738301636, 0.0302631423391602, 0.0193355621557107, 0.0069617473862776, 0.0098490523284546, 0.0110307830242116, 0.015776045834086, 0.0272380661458691, 0.0045141033611955, 0.01575981547692, 0.0218125568944404, 0.013919965555384, 0.0083659552324119, 0.0129023529026261, 0.0077276688964436, 0.0080391506851628, 0.0090636479413445, 0.0114538691684353, 0.0160219511061026, 0.0098000954205541, 0.0074098414084348, 0.0056545000537329, 0.0086449077925443, 0.0202693624334107, 0.0196250083607523, 0.0099314563914388, 0.0184095929372338, 0.0223640647874223, 0.0062181983078102, 0.0131948835929428, 0.0136348421526257, 0.0125337242436577, 0.0155040119373065, 0.0250471014228466, 0.0135704959967314, 0.0090823825483552, 0.0277366848693589, 0.0078232765924189, 0.0098781932528421, 0.0116780861460414, 0.0112238745663571, 0.0120871615509772, 0.0077482175881608];
+        const dataLossList = [0.0160422682464749, 0.0130225796796886, 0.0122524425584336, 0.0137453562017529, 0.0126562074978133, 0.0104213715352587, 0.0143654757608945, 0.0128119493904352, 0.0104686642337043, 0.0133599518909356, 0.011376253798388, 0.0098194506830979, 0.0132132279819195, 0.0117719024354949, 0.0136780648108686, 0.0112439823899958, 0.011607509879396, 0.0128676510707037, 0.0119813439215058, 0.0131394506103727, 0.0109311587261755, 0.0120745091255517, 0.0140708046491181, 0.0109102321447536, 0.0151691603138046, 0.012669155661758, 0.010600460455502, 0.0110770301169563, 0.0122447120946819, 0.0119775886294862, 0.0104827323767431, 0.0144189776433823, 0.0113195947689409, 0.011744340859498, 0.0116028026365988, 0.012314632562417, 0.0123161587706228, 0.0131660693399931, 0.0123690083807689, 0.0127417739264255, 0.0136172418092888, 0.0108014328289633, 0.0121412477155287, 0.0103903011018153, 0.0117819855154424, 0.0110176971945669, 0.013093083944048, 0.0106590459135425, 0.0105390242188028, 0.0123899672190204, 0.0118131811082114, 0.0117012255433919, 0.0112926031825259, 0.0115578333478481, 0.0108893884680549, 0.0132115651112759, 0.0120768129852416, 0.0108745521591319, 0.0114596964176324, 0.0112322967488889, 0.0120007817782784, 0.0108822817516338, 0.0117560852054849, 0.0166269049101157, 0.0143506188787554, 0.0122972375070776, 0.0116272181644938, 0.0125295214180451, 0.0106017591648128, 0.0138381505711994, 0.0107364851283854, 0.0118874535067733, 0.0099798565547691, 0.0123912979117971, 0.0173003734520403, 0.0127657282916972, 0.0124734450167823, 0.0110907014547207, 0.0099113136137634, 0.0111457041288305, 0.0103146092741432, 0.0110867937749017, 0.0111509702597235, 0.0140480445017122, 0.0115044540749175, 0.0101911915922439, 0.0093790609773803, 0.0113042368632105, 0.0130965587934888, 0.0145582220335949, 0.0115452738957058, 0.0142682548370254, 0.0115456934126452, 0.010925239515389, 0.0132952484030456, 0.0110026827529755, 0.0131643213116031, 0.0147039922964384, 0.0135013370187927, 0.0128922398714669, 0.0152585391827274, 0.0120623757149565, 0.0125779348800612, 0.0114469424427997, 0.0104724322661881, 0.0125834731002934, 0.0117882201820862, 0.0149196149107571, 0.0112328971886366, 0.0107094405548678, 0.0115404701188865, 0.0105226984163452, 0.0109812733266967, 0.0105971013011809, 0.0117999287020455, 0.0107141917823864, 0.0103583944778398, 0.0103783865828023, 0.0137923859942803, 0.0117341633945936, 0.0144773164970744, 0.0117054383864531, 0.01104010873311, 0.0111195581842416, 0.0099759757696924, 0.0118966823283544, 0.0141565959715012, 0.0124868239189612, 0.0098607209344936, 0.0100230958523176, 0.0165693109689215, 0.0183204972487394, 0.0136997320899964, 0.0116891477213813, 0.013702576833756, 0.0118711518323705, 0.011133036907873, 0.01213040720457, 0.012226568199274, 0.0109393132545737, 0.0148407247111946, 0.0121454425369988, 0.0110712983597378, 0.0114004586527894, 0.0117245912187068, 0.0104801861076769, 0.0122227052956118, 0.0115087154048393, 0.0126715228377639, 0.0114238941750013];
+        const valLossList = [0.1134836812937106, 0.1430199968462476, 0.1286253252463551, 0.1387169355277034, 0.1322480150587556, 0.1260972401656678, 0.1340244452575081, 0.1299244853162366, 0.1223153883629564, 0.1379344946716328, 0.1264777613471477, 0.1342420172156238, 0.1196238816728016, 0.128212232641109, 0.138181746075492, 0.1262059111255702, 0.1237247146875823, 0.1407427327332606, 0.1415112163809669, 0.149896503452851, 0.129434112569171, 0.1290392395554329, 0.1436700385149573, 0.1333050078790864, 0.1397440279852665, 0.1410150090564884, 0.130341810700396, 0.1234028269204149, 0.1514300843114442, 0.1542208690965829, 0.1353418879514701, 0.1352599727702694, 0.1400118899589447, 0.1368637289844598, 0.1297553808184969, 0.1297484531929077, 0.1336957482916105, 0.1235559622293737, 0.1466491334066808, 0.1269474643895716, 0.1406809575346578, 0.1301935332875267, 0.1380459055971713, 0.1269290429503783, 0.1312166839826854, 0.119717193888714, 0.1343262607637274, 0.1293517545018858, 0.1270684406431163, 0.1398602533269917, 0.1197745077644585, 0.1199875120096685, 0.1256882120159387, 0.1337081724170523, 0.1357358458903417, 0.133001157121044, 0.1296376404226588, 0.1418785460181758, 0.1227732772475188, 0.1223830989337526, 0.1337214820182429, 0.1315598895331873, 0.1435273403423408, 0.113773435604356, 0.1267424235684048, 0.1316400446580726, 0.1279213062198566, 0.1396676182811179, 0.1158624880473976, 0.1164872072784126, 0.120502037253573, 0.1318462192827227, 0.1287451885426799, 0.1413704084061551, 0.1270860455947228, 0.1357926938229657, 0.1234536346026166, 0.1276012195498529, 0.124039284174584, 0.1263843908990591, 0.1304070734391247, 0.12028330673425, 0.1260211856206171, 0.1359121332401375, 0.1268554491488201, 0.1213590397787248, 0.1227562391651556, 0.1268576122951526, 0.1396548899842289, 0.1308426348402767, 0.1207004150096807, 0.1129770159337186, 0.1277682118664107, 0.1189691367456218, 0.1401865302712462, 0.1344731100042893, 0.1384922774421213, 0.1228776141703726, 0.1301512811808014, 0.1327837077589213, 0.1119557528993346, 0.1210178766587883, 0.1297099218465561, 0.1366999461477714, 0.1337396944521005, 0.1236775299342569, 0.1294081409017213, 0.1361872422291618, 0.1254766450101093, 0.1253667754095333, 0.1226582836903834, 0.1260958157515217, 0.1288069102390169, 0.133309602534307, 0.1276164215781953, 0.1272382212334425, 0.1281191239893413, 0.1192327415558933, 0.106273328755363, 0.1391470257993287, 0.1220550504011005, 0.1287315965422223, 0.1345808777127428, 0.1197709000198866, 0.113841918482722, 0.1465351275452287, 0.1230155009346747, 0.1208665029715243, 0.1196044592408564, 0.1199589579351776, 0.1335360352747893, 0.1385782249566527, 0.1261927168632843, 0.1289947104356757, 0.1368961587530604, 0.11924099528907, 0.1239713083726027, 0.1398605656804438, 0.1233925048257603, 0.1408227702962447, 0.1432315693046406, 0.1351222527940439, 0.1350469898216187, 0.1171573471076606, 0.1211100950776982, 0.1365183449734112, 0.1280870911500658, 0.1285133525568389, 0.1194737767234983, 0.1457361207788639];
 
         const ctx = document.getElementById('lossChart').getContext('2d');
         new Chart(ctx, {

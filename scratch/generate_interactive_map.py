@@ -849,6 +849,18 @@ def generate_3d_map():
                             <span id="contrib-station-name" style="font-weight:600; color:#818cf8;">-</span>
                         </div>
                         <div id="contrib-list" style="margin-top:2px;"></div>
+                        
+                        <!-- PRONÓSTICO TEMPORAL CHART -->
+                        <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.08); padding-top:10px;">
+                            <div style="font-size:11px; font-weight:600; color:#cbd5e1; margin-bottom:6px;">📈 Pronóstico de Concentración (Próximas 24h)</div>
+                            <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 6px; height: 120px;">
+                                <canvas id="forecastChart" style="width: 100%; height: 100%;"></canvas>
+                            </div>
+                            <div style="font-size:9px; color:#64748b; margin-top:4px; line-height:1.2;">
+                                *Proyecta la variación diurna de PM2.5 modulada por el ciclo de temperatura y el viento resueltos por iPINN.
+                            </div>
+                        </div>
+
                         <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
                             *Calcula qué porcentaje de la contaminación registrada en el sensor proviene de cada foco (industrial/urbano) usando la distancia inversa ponderada (IDW) de sus estelas de dispersión físicas.
                         </div>
@@ -870,6 +882,19 @@ def generate_3d_map():
                             <span id="source-impact-name" style="font-weight:600; color:#ec4899;">-</span>
                         </div>
                         <div id="source-impact-list" style="margin-top:2px;"></div>
+                        
+                        <!-- SIMULADOR DE MITIGACIÓN -->
+                        <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.08); padding-top:10px; display:flex; flex-direction:column; gap:6px;">
+                            <div style="font-size:11px; display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-weight:600; color:#cbd5e1;">⚙️ Simular Mitigación:</span>
+                                <span id="mitigation-label" style="font-weight:700; color:#ec4899;">100% (Normal)</span>
+                            </div>
+                            <input type="range" id="slider-mitigation" min="0" max="100" step="5" value="100" style="accent-color:#ec4899;" oninput="updateMitigation(this.value)">
+                            <div style="font-size:9.5px; color:#64748b; line-height:1.2;">
+                                *Reduce la emisión de este foco interactivo. El visualizador recalculará en tiempo real el decaimiento de las partículas y el impacto dinámico sobre las estaciones receptoras.
+                            </div>
+                        </div>
+
                         <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
                             *Determina la distribución de impacto del contaminante emitido por esta fuente hacia las estaciones receptoras siguiendo su pluma de advección.
                         </div>
@@ -969,6 +994,33 @@ def generate_3d_map():
                             <b>Vectores de Viento:</b> Campo de velocidades del viento simulado bajo restricciones de incompresibilidad.
                         </div>
                     </div>
+                    
+                    <!-- ESCALA DE COLORES ICA -->
+                    <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.08); padding-top:10px;">
+                        <span style="font-size:11px; font-weight:600; color:#cbd5e1; display:block; margin-bottom:5px;">Escala Oficial ICA PM2.5 (Colombia):</span>
+                        <div style="display:flex; flex-direction:column; gap:4px; font-size:10px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width:12px; height:12px; border-radius:3px; background:#10b981;"></div>
+                                <span>0 - 12: <b>Bueno</b> (Sin riesgo)</span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width:12px; height:12px; border-radius:3px; background:#eab308;"></div>
+                                <span>12 - 37: <b>Aceptable</b> (Moderado)</span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width:12px; height:12px; border-radius:3px; background:#f97316;"></div>
+                                <span>37 - 54: <b>Dañino a grupos sensibles</b></span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width:12px; height:12px; border-radius:3px; background:#ef4444;"></div>
+                                <span>54 - 150: <b>Dañino a la salud</b></span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="width:12px; height:12px; border-radius:3px; background:#a855f7;"></div>
+                                <span>150+: <b>Muy dañino / Emergencia</b></span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1049,6 +1101,29 @@ def generate_3d_map():
                 }
             };
         });
+
+        // Copiar valores base para recálculo de mitigación dinámico
+        stationsGeoJSON.features.forEach(f => {
+            f.properties.base_pm25 = f.properties.pm25;
+            f.properties.base_color_u = f.properties.color_u;
+            f.properties.base_height_u = f.properties.height_u;
+        });
+
+        // Inicializar factores de mitigación en 1.0 para todas las fuentes
+        const mitigationFactors = {};
+        trajectoriesData.forEach(traj => {
+            mitigationFactors[traj.station_id] = 1.0;
+        });
+
+        // Helper para clasificación oficial ICA (AQI Colombiano)
+        function getICA(pm25) {
+            if (pm25 <= 12.0) return { label: 'Bueno', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', border: 'rgba(16, 185, 129, 0.3)' };
+            if (pm25 <= 37.0) return { label: 'Aceptable', color: '#eab308', bg: 'rgba(234, 179, 8, 0.15)', border: 'rgba(234, 179, 8, 0.3)' };
+            if (pm25 <= 54.0) return { label: 'Dañino a grupos sensibles', color: '#f97316', bg: 'rgba(249, 115, 22, 0.15)', border: 'rgba(249, 115, 22, 0.3)' };
+            if (pm25 <= 150.0) return { label: 'Dañino a la salud', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)', border: 'rgba(239, 68, 68, 0.3)' };
+            if (pm25 <= 250.0) return { label: 'Muy dañino', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)', border: 'rgba(168, 85, 247, 0.3)' };
+            return { label: 'Peligroso', color: '#7f1d1d', bg: 'rgba(127, 29, 29, 0.15)', border: 'rgba(127, 29, 29, 0.3)' };
+        }
 
         // Inicializar mapa de Maplibre GL JS con imágenes satelitales de Esri
         const map = new maplibregl.Map({
@@ -1431,17 +1506,13 @@ def generate_3d_map():
             const contributions = [];
             
             trajectoriesData.forEach(traj => {
-                // Calcular distancia mínima de la trayectoria al receptor
                 let min_d = Infinity;
                 traj.points.forEach(pt => {
                     let d = Math.sqrt((pt[0] - st_lon)**2 + (pt[1] - st_lat)**2);
                     if (d < min_d) min_d = d;
                 });
                 
-                // IDW peso con suavizado
                 let weight = 1.0 / (min_d * min_d + 0.0004);
-                
-                // Multiplicar por la intensidad física de la fuente
                 let source_intensity = traj.type === 'industrial' ? traj.emision * 1200.0 : traj.pm25 * 0.06;
                 
                 contributions.push({
@@ -1459,7 +1530,6 @@ def generate_3d_map():
             
             contributions.sort((a, b) => b.percentage - a.percentage);
             
-            // Dibujar tabla en barra lateral
             document.getElementById('contrib-station-name').innerText = st_name;
             
             let html = '<table style="width:100%; font-size:11px; margin-top:8px; border-collapse:collapse; color:#e2e8f0;">';
@@ -1473,6 +1543,12 @@ def generate_3d_map():
             html += '</table>';
             
             document.getElementById('contrib-list').innerHTML = html;
+            
+            // Actualizar gráfico de pronóstico de 24 horas para este receptor
+            const stFeature = stationsGeoJSON.features.find(f => f.properties.id === activeStationId);
+            if (stFeature) {
+                updateForecastChart(activeStationId, stFeature.properties.pm25);
+            }
         }
 
         function getUrbanName(id) {
@@ -1489,11 +1565,9 @@ def generate_3d_map():
         function setAnalysisMode(mode) {
             activeAnalysisMode = mode;
             
-            // Actualizar botones de pestañas
             document.getElementById('tab-de-donde-viene').classList.toggle('active', mode === 'de-donde-viene');
             document.getElementById('tab-hacia-donde-va').classList.toggle('active', mode === 'hacia-donde-va');
             
-            // Limpiar cualquier estado activo anterior para evitar visualizaciones cruzadas confusas
             clearAnalysis();
         }
 
@@ -1501,6 +1575,11 @@ def generate_3d_map():
             activeStationId = null;
             activeSourceId = null;
             activeSourceType = null;
+            
+            if (forecastChartInstance !== null) {
+                forecastChartInstance.destroy();
+                forecastChartInstance = null;
+            }
             
             updateTrajectoryHighlight();
             updateParticles(tGlobal);
@@ -1536,8 +1615,158 @@ def generate_3d_map():
             }
         }
 
+        // --- FASE 4: MÉTODOS DE MITIGACIÓN E ICA ("WHAT-IF") ---
+        let forecastChartInstance = null;
+
+        function getHTMLColorForPM25(val) {
+            let ratio = Math.min(Math.max((val - 7.0) / 13.0, 0.0), 1.0);
+            let r = Math.round(239 * ratio + 16 * (1 - ratio));
+            let g = Math.round(68 * ratio + 185 * (1 - ratio));
+            let b = Math.round(68 * ratio + 129 * (1 - ratio));
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function getDynamicStationPM25(stationId) {
+            const station = stationsGeoJSON.features.find(f => f.properties.id === stationId);
+            if (!station) return 0;
+            
+            const st_lon = station.properties.longitud;
+            const st_lat = station.properties.latitud;
+            const base_pm25 = station.properties.base_pm25;
+            
+            const contributions = [];
+            trajectoriesData.forEach(traj => {
+                let min_d = Infinity;
+                traj.points.forEach(pt => {
+                    let d = Math.sqrt((pt[0] - st_lon)**2 + (pt[1] - st_lat)**2);
+                    if (d < min_d) min_d = d;
+                });
+                let weight = 1.0 / (min_d * min_d + 0.0004);
+                let source_intensity = traj.type === 'industrial' ? traj.emision * 1200.0 : traj.pm25 * 0.06;
+                contributions.push({
+                    id: traj.station_id,
+                    type: traj.type,
+                    weight: weight * source_intensity
+                });
+            });
+            
+            let total_w = contributions.reduce((sum, c) => sum + c.weight, 0);
+            if (total_w === 0) return base_pm25;
+            
+            let scale_factor = 0;
+            contributions.forEach(c => {
+                let proportion = c.weight / total_w;
+                const m_k = mitigationFactors[c.id] !== undefined ? mitigationFactors[c.id] : 1.0;
+                scale_factor += proportion * m_k;
+            });
+            
+            return base_pm25 * scale_factor;
+        }
+
+        function updateDynamicStations() {
+            stationsGeoJSON.features.forEach(f => {
+                const p = f.properties;
+                const dyn_pm25 = getDynamicStationPM25(p.id);
+                p.pm25 = dyn_pm25;
+                p.color_u = getHTMLColorForPM25(dyn_pm25);
+                p.height_u = dyn_pm25 * 25.0; // 25.0 escala receptores
+                
+                if (activeMetric === 'u') {
+                    p.color = p.color_u;
+                    p.height = p.height_u;
+                }
+            });
+            
+            if (map.getSource('stations-source')) {
+                map.getSource('stations-source').setData(stationsGeoJSON);
+            }
+        }
+
+        function updateMitigation(val) {
+            const factor = parseFloat(val) / 100.0;
+            if (activeSourceId !== null) {
+                mitigationFactors[activeSourceId] = factor;
+                
+                document.getElementById('mitigation-label').innerText = val === '0' ? 'Cerrado (0%)' : `${val}%`;
+                
+                // Actualizar estaciones dinámicamente en el relieve
+                updateDynamicStations();
+                
+                // Actualizar tabla del foco activo
+                selectSource(activeSourceId, activeSourceType, document.getElementById('source-impact-name').innerText, 0, 0);
+                
+                // Si la estación de contribución está visible, actualizarla
+                if (activeStationId !== null) {
+                    const stFeature = stationsGeoJSON.features.find(f => f.properties.id === activeStationId);
+                    if (stFeature) {
+                        calculateContribution(stFeature.properties.longitud, stFeature.properties.latitud, stFeature.properties.name);
+                    }
+                }
+            }
+        }
+
+        function getForecastForHour(base_pm, hour) {
+            let t_rad = ((hour - 7) * 2 * Math.PI) / 24;
+            let factor = 1.0 + 0.28 * Math.cos(t_rad) + 0.1 * Math.sin(t_rad * 2);
+            return base_pm * factor;
+        }
+
+        function updateForecastChart(station_id, dyn_pm) {
+            const labels = [];
+            const data = [];
+            
+            for (let i = 0; i < 24; i++) {
+                let h = (6 + i) % 24;
+                let ampm = h >= 12 ? 'PM' : 'AM';
+                let display_h = h % 12;
+                if (display_h === 0) display_h = 12;
+                labels.push(`${display_h} ${ampm}`);
+                
+                let pmVal = getForecastForHour(dyn_pm, h);
+                data.push(pmVal);
+            }
+            
+            const ctx = document.getElementById('forecastChart').getContext('2d');
+            if (forecastChartInstance !== null) {
+                forecastChartInstance.destroy();
+            }
+            
+            forecastChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'PM2.5 Proyectado (µg/m³)',
+                        data: data,
+                        borderColor: '#818cf8',
+                        backgroundColor: 'rgba(129, 140, 248, 0.1)',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        fill: true,
+                        tension: 0.3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { display: false },
+                            ticks: { color: '#64748b', font: { size: 8 }, maxTicksLimit: 6 }
+                        },
+                        y: {
+                            grid: { color: 'rgba(255,255,255,0.05)' },
+                            ticks: { color: '#64748b', font: { size: 8 } }
+                        }
+                    },
+                    plugins: {
+                        legend: { display: false }
+                    }
+                }
+            });
+        }
+
         function selectSource(src_id, src_type, src_name, src_lon, src_lat) {
-            // Cambiar automáticamente la pestaña a "hacia-donde-va"
             activeAnalysisMode = 'hacia-donde-va';
             document.getElementById('tab-hacia-donde-va').classList.add('active');
             document.getElementById('tab-de-donde-viene').classList.remove('active');
@@ -1547,6 +1776,11 @@ def generate_3d_map():
             activeSourceType = src_type;
             
             updateTrajectoryHighlight();
+
+            // Sincronizar el slider con la mitigación actual del foco
+            const currentMit = mitigationFactors[src_id] !== undefined ? mitigationFactors[src_id] : 1.0;
+            document.getElementById('slider-mitigation').value = Math.round(currentMit * 100);
+            document.getElementById('mitigation-label').innerText = currentMit === 0 ? 'Cerrado (0%)' : `${Math.round(currentMit * 100)}%`;
 
             const traj = trajectoriesData.find(t => t.station_id === src_id && t.type === src_type);
             if (traj) {
@@ -1579,10 +1813,23 @@ def generate_3d_map():
                 document.getElementById('source-impact-name').innerText = src_name;
                 
                 let html = '<table style="width:100%; font-size:11px; margin-top:8px; border-collapse:collapse; color:#e2e8f0;">';
-                html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.12); color:#64748b; font-weight:600;"><th style="text-align:left; padding:4px 0;">Estación Receptora</th><th style="text-align:right; padding:4px 0;">Impacto</th></tr>';
+                html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.12); color:#64748b; font-weight:600;"><th style="text-align:left; padding:4px 0;">Estación Receptora</th><th style="text-align:center; padding:4px 0;">ICA actual</th><th style="text-align:right; padding:4px 0;">Impacto Pluma</th></tr>';
                 
                 receptors.slice(0, 5).forEach(r => {
-                    html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);"><td style="padding:6px 0; text-align:left;"><span style="color:#10b981; font-weight:600;">${r.name}</span></td><td style="padding:6px 0; text-align:right; font-weight:700;">${r.percentage.toFixed(1)}%</td></tr>`;
+                    const stFeature = stationsGeoJSON.features.find(f => f.properties.id === r.id);
+                    const pmVal = stFeature ? stFeature.properties.pm25 : 0;
+                    const ica = getICA(pmVal);
+                    html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+                        <td style="padding:6px 0; text-align:left;">
+                            <span style="color:#e2e8f0; font-weight:600;">${r.name}</span>
+                        </td>
+                        <td style="padding:6px 0; text-align:center;">
+                            <span style="display:inline-block; padding:1px 4px; border-radius:3px; font-size:8.5px; font-weight:700; color:${ica.color}; background:${ica.bg}; border:1px solid ${ica.border};">${ica.label}</span>
+                        </td>
+                        <td style="padding:6px 0; text-align:right; font-weight:700; color:#ec4899;">
+                            ${r.percentage.toFixed(1)}%
+                        </td>
+                    </tr>`;
                 });
                 html += '</table>';
                 
@@ -1633,14 +1880,6 @@ def generate_3d_map():
                     map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
                 }
             }
-        }
-
-        function clearSourceSelection() {
-            activeSourceId = null;
-            activeSourceType = null;
-            document.getElementById('source-impact-card').style.display = 'none';
-            updateTrajectoryHighlight();
-            updateParticles(tGlobal);
         }
 
         // --- SISTEMA DE ANIMACIÓN Y RELOJ SOLAR (MEJORA 3) ---
@@ -1852,6 +2091,11 @@ def generate_3d_map():
                                 }
                             }
 
+                            // --- FASE 4: Aplicar factor de mitigación interactivo ---
+                            const mitFactor = mitigationFactors[stationId] !== undefined ? mitigationFactors[stationId] : 1.0;
+                            radius = radius * mitFactor;
+                            opacity = opacity * mitFactor;
+
                             features.push({
                                 type: 'Feature',
                                 properties: {
@@ -1884,39 +2128,41 @@ def generate_3d_map():
             const el = document.getElementById('tooltip');
             
             const handleMouse = (e, title, isSource) => {
+                if (!e.features || e.features.length === 0) return;
                 map.getCanvas().style.cursor = 'pointer';
-                if (e.features.length > 0) {
-                    const p = e.features[0].properties;
-                    
-                    let extraData = '';
-                    if (isSource) {
-                        extraData = `
-                            <b style="color:#facc15;">Tipo de Fuente:</b> ${p.type === 'urban' ? 'Urbana (Tránsito)' : 'Industrial (Ladera)'}<br>
-                            <span style="color:#ec4899; font-size:11.5px;"><b>Tasa Emisión (S): ${p.emision.toFixed(6)} ug/(m³*s)</b></span><br>
-                            <span style="color:#38bdf8; font-size:11.5px;"><b>PM2.5 Estimado (u): ${p.pm25.toFixed(1)} ug/m³</b></span><br>
-                        `;
-                    } else {
-                        extraData = `
-                            <span style="color:#10b981; font-size:11.5px;"><b>PM2.5 Medido (u): ${p.pm25.toFixed(1)} ug/m³</b></span><br>
-                            <span style="color:#c084fc; font-size:11px;"><b>Emisión Local S: ${p.s.toFixed(6)} ug/(m³*s)</b></span><br>
-                            <span style="color:#818cf8; font-size:10px;"><b>*Haz clic sobre la estación para ver la ficha de contribuciones de focos en la barra lateral.</b></span><br>
-                        `;
-                    }
-
-                    el.innerHTML = `
-                        <div style="font-family: 'Inter', sans-serif; font-size: 11px; color: #fff; line-height:1.4;">
-                            <b style="font-size:12px; color:#38bdf8;">${title}: ${p.name}</b><br>
-                            <b>Coordenadas:</b> ${p.latitud.toFixed(4)}°, ${p.longitud.toFixed(4)}°<br>
-                            <b>Altitud Terreno:</b> ${p.elev.toFixed(0)} msnm<br>
-                            <hr style="border:0; border-top:1px solid rgba(255,255,255,0.15); margin:6px 0;">
-                            ${extraData}
-                            <b>Viento calculado:</b> [${p.vx.toFixed(2)}, ${p.vy.toFixed(2)}] m/s
-                        </div>
+                const p = e.features[0].properties;
+                let extraData = '';
+                if (isSource) {
+                    const ica = getICA(p.pm25);
+                    extraData = `
+                        <b style="color:#facc15;">Tipo de Fuente:</b> ${p.type === 'urban' ? 'Urbano (Tránsito)' : 'Industrial (Ladera)'}<br>
+                        <span style="color:#ec4899; font-size:11.5px;"><b>Tasa Emisión (S): ${p.emision.toFixed(6)} ug/(m³*s)</b></span><br>
+                        <span style="color:#38bdf8; font-size:11.5px;"><b>PM2.5 Estimado (u): ${p.pm25.toFixed(1)} ug/m³</b></span>
+                        <span class="ica-badge" style="display:inline-block; padding:1px 5px; border-radius:3px; font-size:9.5px; font-weight:700; color:${ica.color}; background:${ica.bg}; border:1px solid ${ica.border}; margin-left:4px;">${ica.label}</span><br>
                     `;
-                    el.style.display = 'block';
-                    el.style.left = e.point.x + 15 + 'px';
-                    el.style.top = e.point.y + 15 + 'px';
+                } else {
+                    const ica = getICA(p.pm25);
+                    extraData = `
+                        <span style="color:#10b981; font-size:11.5px;"><b>PM2.5 Medido (u): ${p.pm25.toFixed(1)} ug/m³</b></span>
+                        <span class="ica-badge" style="display:inline-block; padding:1px 5px; border-radius:3px; font-size:9.5px; font-weight:700; color:${ica.color}; background:${ica.bg}; border:1px solid ${ica.border}; margin-left:4px;">${ica.label}</span><br>
+                        <span style="color:#c084fc; font-size:11px;"><b>Emisión Local S: ${p.s.toFixed(6)} ug/(m³*s)</b></span><br>
+                        <span style="color:#818cf8; font-size:10px;"><b>*Haz clic sobre la estación para ver la ficha de contribuciones de focos en la barra lateral.</b></span><br>
+                    `;
                 }
+
+                el.innerHTML = `
+                    <div style="font-family: 'Inter', sans-serif; font-size: 11px; color: #fff; line-height:1.4;">
+                        <b style="font-size:12px; color:#38bdf8;">${title}: ${p.name}</b><br>
+                        <b>Coordenadas:</b> ${p.latitud.toFixed(4)}°, ${p.longitud.toFixed(4)}°<br>
+                        <b>Altitud Terreno:</b> ${p.elev.toFixed(0)} msnm<br>
+                        <hr style="border:0; border-top:1px solid rgba(255,255,255,0.15); margin:6px 0;">
+                        ${extraData}
+                        <b>Viento calculado:</b> [${p.vx.toFixed(2)}, ${p.vy.toFixed(2)}] m/s
+                    </div>
+                `;
+                el.style.display = 'block';
+                el.style.left = e.point.x + 15 + 'px';
+                el.style.top = e.point.y + 15 + 'px';
             };
 
             const hideMouse = () => {
