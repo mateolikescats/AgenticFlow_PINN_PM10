@@ -201,19 +201,55 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
     all_points = GridPoint[]
     idx = 1
     for lon in grid_lon, lat in grid_lat
-        # Estimar elevación simplificada
-        elev_val = elev_min + 0.05 * (elev_max - elev_min) # ~1480 msnm
-        push!(all_points, GridPoint(lon, lat, elev_val, emision_grid[idx], vx_grid[idx], vy_grid[idx], grid_pts[1, idx], grid_pts[2, idx], grid_pts[3, idx]))
+        # Filtrar puntos que estén muy lejos de todas las estaciones receptoras para evitar artefactos de extrapolación en los bordes
+        is_near_station = false
+        for st in inputs
+            dist = sqrt((lon - Float64(st["longitud"]))^2 + (lat - Float64(st["latitud"]))^2)
+            if dist <= 0.08  # Aprox 8.8 km de distancia máxima a cualquier estación
+                is_near_station = true
+                break
+            end
+        end
+        
+        if is_near_station
+            # Estimar elevación simplificada
+            elev_val = elev_min + 0.05 * (elev_max - elev_min) # ~1480 msnm
+            push!(all_points, GridPoint(lon, lat, elev_val, emision_grid[idx], vx_grid[idx], vy_grid[idx], grid_pts[1, idx], grid_pts[2, idx], grid_pts[3, idx]))
+        end
         idx += 1
     end
     
-    # Ordenar por emisión S descendente
-    sort!(all_points, by = p -> p.S, rev=true)
+    # NUEVO: Buscar el pico de emisión (local maximum) en el vecindario de cada estación
+    candidates = GridPoint[]
+    for st in inputs
+        st_lon = Float64(st["longitud"])
+        st_lat = Float64(st["latitud"])
+        
+        best_gp = nothing
+        max_S = -Inf
+        
+        for gp in all_points
+            dist = sqrt((gp.lon - st_lon)^2 + (gp.lat - st_lat)^2)
+            if dist <= 0.04  # Buscar en un radio de ~4.4 km de cada estación
+                if gp.S > max_S
+                    max_S = gp.S
+                    best_gp = gp
+                end
+            end
+        end
+        
+        if best_gp !== nothing
+            push!(candidates, best_gp)
+        end
+    end
     
-    # NMS (Non-maximum suppression) para seleccionar focos de emisión espacialmente separados
+    # Ordenar candidatos por emisión S descendente
+    sort!(candidates, by = p -> p.S, rev=true)
+    
+    # NMS (Non-maximum suppression) para seleccionar focos de emisión espacialmente separados a partir de los candidatos
     hotspots = GridPoint[]
-    min_dist_deg = 0.035 # Aprox 3.8 km de distancia mínima para asegurar que sean distintas comunas
-    for gp in all_points
+    min_dist_deg = 0.032 # Aprox 3.5 km de distancia mínima para asegurar que cubran distintas comunas
+    for gp in candidates
         too_close = false
         for hs in hotspots
             dist = sqrt((gp.lon - hs.lon)^2 + (gp.lat - hs.lat)^2)
@@ -224,6 +260,7 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         end
         if !too_close
             push!(hotspots, gp)
+            println("📍 Foco Detectado: Lon=$(round(gp.lon, digits=4)), Lat=$(round(gp.lat, digits=4)), Emisión S=$(round(gp.S, digits=6))")
         end
         if length(hotspots) >= 8 # Seleccionar los 8 focos principales del valle
             break
