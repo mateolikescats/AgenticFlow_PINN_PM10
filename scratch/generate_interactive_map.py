@@ -939,7 +939,8 @@ def generate_3d_map():
 
         function updateParticles(t_val) {
             const features = [];
-            const releaseInterval = 1.2; // Intervalo de tiempo para liberar una nueva partícula en cada estación
+            const releaseInterval = 1.6; // Intervalo de tiempo para liberar una nueva partícula
+            const numStreams = 6;        // Número de flujos paralelos de dispersión por estación
 
             trajectoriesData.forEach(traj => {
                 const points = traj.points;
@@ -956,57 +957,59 @@ def generate_3d_map():
                         const pos = interpolatePosition(points, age);
                         const ageRatio = age / 15.0;
 
-                        // Agregar meandro turbulento (wiggle) perpendicular a la trayectoria
-                        // Usamos funciones trigonométricas basadas en la edad y el ID de la estación
-                        // La amplitud del desvío crece con la edad (distancia al origen)
-                        const wiggleAmplitude = 0.0006 * ageRatio; // Desviación máxima aproximada de 60 metros
-                        const wiggleX = Math.sin(age * 1.2 + stationId * 3) * wiggleAmplitude;
-                        const wiggleY = Math.cos(age * 0.8 + stationId * 7) * wiggleAmplitude;
-                        
-                        const finalPos = [pos[0] + wiggleX, pos[1] + wiggleY];
-
                         // Escalar la intensidad de PM2.5 (del 0 al 1 entre 7 y 20 ug/m3)
                         const pm25Ratio = Math.min(Math.max((pm25 - 7.0) / 13.0, 0.0), 1.0);
 
-                        // El color inicial de la pluma depende de la contaminación de su estación de origen:
-                        // Estaciones limpias = verde-amarillo, Estaciones sucias = rojo-naranja
-                        const r_start = Math.round(239 * pm25Ratio + 16 * (1 - pm25Ratio));
-                        const g_start = Math.round(68 * pm25Ratio + 185 * (1 - pm25Ratio));
-                        const b_start = Math.round(68 * pm25Ratio + 129 * (1 - pm25Ratio));
+                        for (let j = 0; j < numStreams; j++) {
+                            // Fase única por flujo para que se desvíen en distintas direcciones
+                            const phase = (j * 2 * Math.PI) / numStreams;
+                            
+                            // La amplitud del cono de dispersión crece a medida que se aleja de la fuente (ageRatio)
+                            const wiggleAmplitude = 0.0018 * ageRatio; // Desviación máxima ~200 metros en el extremo
+                            
+                            // Meandro dinámico desfasado por flujo para crear la pluma ensanchada
+                            const wiggleX = Math.sin(age * (1.1 + j * 0.15) + stationId + phase) * wiggleAmplitude;
+                            const wiggleY = Math.cos(age * (0.8 + j * 0.1) + stationId * 2 + phase * 1.5) * wiggleAmplitude;
 
-                        // Con la edad (distancia/tiempo), la pluma se oxida y se dispersa hacia amarillo
-                        const r = Math.round(r_start + (250 - r_start) * ageRatio);
-                        const g = Math.round(g_start + (204 - g_start) * ageRatio);
-                        const b = Math.round(b_start + (21 - b_start) * ageRatio);
-                        const color = `rgb(${r},${g},${b})`;
+                            const finalPos = [pos[0] + wiggleX, pos[1] + wiggleY];
 
-                        // El tamaño de la partícula aumenta con la edad (dispersión/difusión física)
-                        // y es fuertemente proporcional a la concentración de la estación fuente
-                        const baseRadius = 3 + 12 * pm25Ratio;
-                        
-                        // La velocidad del viento local influye en la tasa de esparcimiento (mayor velocidad = dispersión más rápida)
-                        const windSpeed = Math.sqrt(traj.vx * traj.vx + traj.vy * traj.vy);
-                        const dispersionRate = 0.5 + 1.5 * (windSpeed / 2.0);
-                        const radius = baseRadius * (1.0 + dispersionRate * ageRatio);
+                            // El color inicial de la pluma depende de la contaminación de su estación de origen
+                            const r_start = Math.round(239 * pm25Ratio + 16 * (1 - pm25Ratio));
+                            const g_start = Math.round(68 * pm25Ratio + 185 * (1 - pm25Ratio));
+                            const b_start = Math.round(68 * pm25Ratio + 129 * (1 - pm25Ratio));
 
-                        // La opacidad disminuye con la edad (dilución en el aire)
-                        // Zonas con baja contaminación tienen plumas muy tenues/transparentes; zonas críticas son muy densas
-                        const baseOpacity = 0.15 + 0.7 * pm25Ratio;
-                        const opacity = baseOpacity * (1.0 - ageRatio);
+                            // Con el tiempo/edad, la pluma se oxida y se dispersa hacia amarillo
+                            const r = Math.round(r_start + (250 - r_start) * ageRatio);
+                            const g = Math.round(g_start + (204 - g_start) * ageRatio);
+                            const b = Math.round(b_start + (21 - b_start) * ageRatio);
+                            const color = `rgb(${r},${g},${b})`;
 
-                        features.push({
-                            type: 'Feature',
-                            properties: {
-                                station_id: stationId,
-                                color: color,
-                                radius: radius,
-                                opacity: opacity
-                            },
-                            geometry: {
-                                type: 'Point',
-                                coordinates: finalPos // Drapados en 2D en la superficie satelital del relieve, con turbulencia
-                            }
-                        });
+                            // Tamaño proporcional a la concentración, variando levemente por flujo
+                            const baseRadius = (3.5 + 11.5 * pm25Ratio) * (0.8 + 0.4 * Math.sin(j));
+                            
+                            // Tasa de esparcimiento influenciada por la velocidad del viento
+                            const windSpeed = Math.sqrt(traj.vx * traj.vx + traj.vy * traj.vy);
+                            const dispersionRate = 0.4 + 1.6 * (windSpeed / 2.0);
+                            const radius = baseRadius * (1.0 + dispersionRate * ageRatio);
+
+                            // Opacidad dividida entre el número de flujos para evitar sobre-saturación en el solapamiento
+                            const baseOpacity = (0.12 + 0.65 * pm25Ratio) / (numStreams * 0.35);
+                            const opacity = Math.min(baseOpacity * (1.0 - ageRatio), 0.85);
+
+                            features.push({
+                                type: 'Feature',
+                                properties: {
+                                    station_id: stationId,
+                                    color: color,
+                                    radius: radius,
+                                    opacity: opacity
+                                },
+                                geometry: {
+                                    type: 'Point',
+                                    coordinates: finalPos
+                                }
+                            });
+                        }
                     }
                     k++;
                 }
