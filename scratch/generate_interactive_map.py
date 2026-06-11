@@ -34,6 +34,14 @@ def interpolate_wind(lon, lat, stations_df):
         vz = np.sum(vz_vals * weights) / w_sum
         return vx, vy, vz
 
+def get_color_for_pm25(val):
+    ratio = min(max((val - 7.0) / 13.0, 0.0), 1.0)
+    # Gradiente desde verde brillante (16, 185, 129) a rojo intenso (239, 68, 68)
+    r = int(239 * ratio + 16 * (1 - ratio))
+    g = int(68 * ratio + 185 * (1 - ratio))
+    b = int(68 * ratio + 129 * (1 - ratio))
+    return f"rgb({r},{g},{b})"
+
 def generate_3d_map():
     predictions_path = "output_predictions.json"
     if not os.path.exists(predictions_path):
@@ -49,58 +57,123 @@ def generate_3d_map():
     lat_min, lat_max = 6.0, 6.45
     lon_min, lon_max = -75.7, -75.3
 
-    # Calcular base del terreno para los soportes verticales
-    z_ground = []
-    for _, r in df.iterrows():
-        g_h = get_terrain_height(r['longitud'], r['latitud'])
-        # Asegurar al menos 60 metros de espacio para que no queden enterrados
-        z_ground.append(min(r['elevacion'] - 60.0, g_h))
-    df['z_ground'] = z_ground
+    # 1. Generar Stations GeoJSON
+    stations_features = []
+    for idx, r in df.iterrows():
+        pm25 = r["pred_pm25_ug_m3"]
+        color = get_color_for_pm25(pm25)
+        # Escalar la altura del cilindro en metros para que luzca estético (PM2.5 * 80 metros)
+        height = pm25 * 80.0
+        
+        stations_features.append({
+            "type": "Feature",
+            "properties": {
+                "id": int(r.get("id", idx)),
+                "latitud": float(r["latitud"]),
+                "longitud": float(r["longitud"]),
+                "pm25": float(pm25),
+                "vx": float(r["pred_viento_vx_m_s"]),
+                "vy": float(r["pred_viento_vy_m_s"]),
+                "vz": float(r["pred_viento_vz_m_s"]),
+                "s": float(r["pred_emision_S_ug_m3_s"]),
+                "elev": float(r["elevacion"]),
+                "color": color,
+                "height": height
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [float(r["longitud"]), float(r["latitud"])]
+            }
+        })
+    stations_geojson = json.dumps({
+        "type": "FeatureCollection",
+        "features": stations_features
+    })
 
-    # Calcular las Trayectorias de Dispersión (Smoke Trails) para pasarlas como JSON a JS
-    trajectories = []
-    dt = 0.012  # Paso temporal de simulación visual
+    # 2. Generar Trajectories GeoJSON (Segmentadas para gradiente de color y ancho descendente)
+    trajectory_features = []
+    dt = 0.011  # Paso visual
     for idx, r in df.iterrows():
         curr_lon = r['longitud']
         curr_lat = r['latitud']
-        curr_elev = r['elevacion']
         
-        path = [[curr_lon, curr_lat, curr_elev]]
-        
-        # Integrar la trayectoria de partículas usando el campo de viento de la PINN
+        points = [[curr_lon, curr_lat]]
         for step in range(15):
             vx, vy, vz = interpolate_wind(curr_lon, curr_lat, df)
             curr_lon += vx * dt
             curr_lat += vy * dt
-            curr_elev += vz * 12000.0 * dt  # Escalado vertical visible
-            
-            # Limitar a la caja de visualización
             curr_lon = np.clip(curr_lon, lon_min, lon_max)
             curr_lat = np.clip(curr_lat, lat_min, lat_max)
+            points.append([curr_lon, curr_lat])
             
-            path.append([curr_lon, curr_lat, curr_elev])
+        for step in range(len(points) - 1):
+            p1 = points[step]
+            p2 = points[step + 1]
             
-        trajectories.append({
-            "station_id": int(r.get("id", idx)),
-            "pm25": float(r["pred_pm25_ug_m3"]),
-            "path": path
+            ratio = step / (len(points) - 2)
+            # De rojo (239, 68, 68) en el origen a amarillo (250, 204, 21) al final
+            r_val = int(239 + (250 - 239) * ratio)
+            g_val = int(68 + (204 - 68) * ratio)
+            b_val = int(68 + (21 - 68) * ratio)
+            color = f"rgb({r_val},{g_val},{b_val})"
+            
+            # Ancho y opacidad disminuyen progresivamente para simular dispersión (pluma)
+            width = 6.0 * (1.0 - 0.7 * ratio)
+            opacity = 0.85 * (1.0 - 0.5 * ratio)
+            
+            trajectory_features.append({
+                "type": "Feature",
+                "properties": {
+                    "color": color,
+                    "width": width,
+                    "opacity": opacity,
+                    "station_id": int(r.get("id", idx))
+                },
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [p1, p2]
+                }
+            })
+    trajectories_geojson = json.dumps({
+        "type": "FeatureCollection",
+        "features": trajectory_features
+    })
+
+    # 3. Generar Wind Vectors GeoJSON (Líneas direccionales celestes drapeadas)
+    wind_features = []
+    scale = 0.0028
+    for idx, r in df.iterrows():
+        vx = r['pred_viento_vx_m_s']
+        vy = r['pred_viento_vy_m_s']
+        p1 = [r['longitud'], r['latitud']]
+        p2 = [r['longitud'] + vx * scale, r['latitud'] + vy * scale]
+        
+        wind_features.append({
+            "type": "Feature",
+            "properties": {
+                "color": "#38bdf8",
+                "width": 3.5
+            },
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [p1, p2]
+            }
         })
+    wind_geojson = json.dumps({
+        "type": "FeatureCollection",
+        "features": wind_features
+    })
 
-    # Serializar los datos para incrustarlos en el script de JS
-    stations_json = df.to_json(orient='records')
-    trajectories_json = json.dumps(trajectories)
-
-    # Envolver en una plantilla HTML Premium con Maplibre GL JS y Deck.gl
-    dashboard_html = """<!DOCTYPE html>
+    # Plantilla HTML Premium autodescriptiva 100% nativa
+    dashboard_template = """<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>iPINN 3D - Visualizador de Calidad del Aire y Vientos</title>
-    <!-- Maplibre GL JS y Deck.gl -->
+    <!-- Maplibre GL JS -->
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
-    <script src="https://unpkg.com/deck.gl@8.9.0/dist.min.js"></script>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
@@ -264,7 +337,7 @@ def generate_3d_map():
             background: linear-gradient(135deg, #10b981, #ef4444);
             border: 1.5px solid white;
             box-shadow: 0 0 5px rgba(239, 68, 68, 0.4);
-            border-radius: 2px; /* Representa cilindros */
+            border-radius: 2px;
             width: 12px;
             height: 16px;
         }
@@ -285,14 +358,6 @@ def generate_3d_map():
             background: rgba(255, 255, 255, 0.1);
             border: 1.5px solid #22c55e;
             border-radius: 3px;
-        }
-        .icon-stalk {
-            width: 4px;
-            height: 16px;
-            background: transparent;
-            border-left: 2px dashed rgba(255, 255, 255, 0.5);
-            border-radius: 0;
-            margin-left: 6px;
         }
         .metric-grid {
             display: grid;
@@ -389,7 +454,7 @@ def generate_3d_map():
                     <label class="toggle-label">
                         <input type="checkbox" id="toggle-stations" checked onchange="toggleLayer('stations-layer', this.checked)">
                         <span class="toggle-custom"></span>
-                        Estaciones 3D (PM2.5)
+                        Estaciones 3D (Cilindros)
                     </label>
                     <label class="toggle-label">
                         <input type="checkbox" id="toggle-trails" checked onchange="toggleLayer('trajectories-layer', this.checked)">
@@ -399,12 +464,7 @@ def generate_3d_map():
                     <label class="toggle-label">
                         <input type="checkbox" id="toggle-wind" checked onchange="toggleLayer('wind-layer', this.checked)">
                         <span class="toggle-custom"></span>
-                        Vectores de Viento (3D)
-                    </label>
-                    <label class="toggle-label">
-                        <input type="checkbox" id="toggle-stalks" checked onchange="toggleLayer('stalks-layer', this.checked)">
-                        <span class="toggle-custom"></span>
-                        Soportes de Altura
+                        Vectores de Viento (Dirección)
                     </label>
                 </div>
             </div>
@@ -421,25 +481,19 @@ def generate_3d_map():
                     <div class="legend-item">
                         <div class="legend-icon icon-station"></div>
                         <div>
-                            <b>Estaciones 3D (Cilindros):</b> El <b>diámetro</b> y la <b>altura</b> indican el PM2.5 predicho. El color varía de verde (limpio) a rojo (contaminado).
+                            <b>Estaciones 3D (Cilindros):</b> El <b>diámetro</b> y la <b>altura</b> indican el PM2.5 predicho. El color varía de verde (limpio) a rojo (contaminado). Se asientan directamente en el relieve.
                         </div>
                     </div>
                     <div class="legend-item">
                         <div class="legend-icon icon-trail"></div>
                         <div>
-                            <b>Estelas de Dispersión:</b> Senderos de partículas que muestran <b>hacia dónde sopla el viento</b> (rojo en origen denso, amarillo al diluirse).
+                            <b>Estelas de Dispersión:</b> Senderos que muestran <b>hacia dónde sopla el viento</b> (rojo en origen denso, amarillo al diluirse por advección).
                         </div>
                     </div>
                     <div class="legend-item">
                         <div class="legend-icon icon-wind"></div>
                         <div>
-                            <b>Vectores de Viento:</b> Líneas celestes que representan la magnitud y dirección del viento calculado por la PINN.
-                        </div>
-                    </div>
-                    <div class="legend-item">
-                        <div class="legend-icon icon-stalk"></div>
-                        <div>
-                            <b>Soportes de Altura:</b> Líneas guía para apreciar a qué altitud vuela el viento y se miden las partículas sobre el terreno.
+                            <b>Vectores de Viento:</b> Líneas celestes que representan la magnitud y dirección del viento local calculado por la PINN.
                         </div>
                     </div>
                 </div>
@@ -469,10 +523,10 @@ def generate_3d_map():
 
             <div class="control-tip">
                 <b>Navegación 3D:</b><br>
-                • <b>Rotar Cámara:</b> Mantén presionado <b>clic izquierdo</b> (o clic derecho) y arrastra.<br>
+                • <b>Rotar Cámara:</b> Mantén presionado <b>clic izquierdo</b> y arrastra.<br>
                 • <b>Zoom:</b> Rueda del ratón.<br>
                 • <b>Desplazar (Pan):</b> Mantén presionado <b>Ctrl + Clic izquierdo</b> y arrastra.<br>
-                • <b>Detalles:</b> Pasa el cursor sobre un cilindro de estación para ver su ficha técnica detallada.
+                • <b>Ficha Técnica:</b> Pasa el cursor sobre un cilindro de estación para ver detalles.
             </div>
         </div>
         <div class="map-container">
@@ -485,10 +539,38 @@ def generate_3d_map():
 
     <script type="text/javascript">
         // Datos inyectados desde Python
-        const stationsData = {stations_json};
-        const trajectoriesData = {trajectories_json};
+        const stationsGeoJSON = {stations_geojson_placeholder};
+        const trajectoriesGeoJSON = {trajectories_geojson_placeholder};
+        const windGeoJSON = {wind_geojson_placeholder};
 
-        // Inicializar mapa de Maplibre GL JS con imágenes de Esri
+        // Generar geometrías de polígonos hexagonales para fill-extrusion nativa
+        function createHexagon(center, radius) {
+            const coordinates = [];
+            for (let i = 0; i < 6; i++) {
+                const angle = (i * 60 * Math.PI) / 180;
+                // 1 grado latitud es aprox 111000m, longitud es aprox 110000m en Medellín
+                const dx = (radius * Math.cos(angle)) / 110000;
+                const dy = (radius * Math.sin(angle)) / 111000;
+                coordinates.push([center[0] + dx, center[1] + dy]);
+            }
+            coordinates.push(coordinates[0]); // Cerrar el polígono
+            return [coordinates];
+        }
+
+        // Convertir los puntos de estaciones a hexágonos en el navegador para que hereden el relieve automáticamente
+        stationsGeoJSON.features = stationsGeoJSON.features.map(f => {
+            const coords = f.geometry.coordinates;
+            return {
+                type: 'Feature',
+                properties: f.properties,
+                geometry: {
+                    type: 'Polygon',
+                    coordinates: createHexagon(coords, 180) // 180 metros de radio
+                }
+            };
+        });
+
+        // Inicializar mapa de Maplibre GL JS con imágenes satelitales de Esri
         const map = new maplibregl.Map({
             container: 'map',
             style: {
@@ -525,130 +607,110 @@ def generate_3d_map():
         map.addControl(new maplibregl.NavigationControl());
 
         map.on('load', () => {
-            // 1. Agregar terreno 3D (Mapzen Terrarium en AWS - Cobertura Global y Libre)
+            // 1. Agregar terreno 3D (Nextzen Terrarium en AWS S3 - Subdominio directo para evitar bloqueos CORS en local file://)
             map.addSource('terrain', {
                 type: 'raster-dem',
                 tiles: [
-                    'https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'
+                    'https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png'
                 ],
                 encoding: 'terrarium',
                 tileSize: 256,
                 maxzoom: 15
             });
-            map.setTerrain({ source: 'terrain', exaggeration: 1.4 });
+            map.setTerrain({ source: 'terrain', exaggeration: 1.5 });
 
-            // 2. Generar datos para los soportes verticales (Stalks)
-            const stalkData = [];
-            stationsData.forEach(d => {
-                // Línea desde base hasta la estación
-                stalkData.push({
-                    from: [d.longitud, d.latitud, d.z_ground],
-                    to: [d.longitud, d.latitud, d.elevacion]
-                });
-                // Línea desde la estación hasta el vector de viento (+80m)
-                stalkData.push({
-                    from: [d.longitud, d.latitud, d.elevacion],
-                    to: [d.longitud, d.latitud, d.elevacion + 80]
-                });
+            // 2. Capa de Estaciones 3D usando fill-extrusion nativo (se asienta automáticamente en el relieve)
+            map.addSource('stations-source', {
+                type: 'geojson',
+                data: stationsGeoJSON
             });
 
-            // Capa de Soportes (Deck.gl LineLayer)
-            const stalkLayer = new deck.MapboxLayer({
-                id: 'stalks-layer',
-                type: deck.LineLayer,
-                data: stalkData,
-                getSourcePosition: d => d.from,
-                getTargetPosition: d => d.to,
-                getColor: [255, 255, 255, 90],
-                getWidth: 2.2,
-                pickable: false
-            });
-            map.addLayer(stalkLayer);
-
-            // 3. Capa de Trayectorias de Dispersión (Deck.gl PathLayer)
-            const pathLayer = new deck.MapboxLayer({
-                id: 'trajectories-layer',
-                type: deck.PathLayer,
-                data: trajectoriesData,
-                getPath: d => d.path,
-                getColor: d => {
-                    // Color naranja/amarillo con cierta transparencia
-                    return [251, 146, 60, 180];
-                },
-                getWidth: 12,
-                widthMinPixels: 2.8,
-                shadowEnabled: false,
-                pickable: false
-            });
-            map.addLayer(pathLayer);
-
-            // 4. Capa de Vectores de Viento (Deck.gl LineLayer)
-            const windLayer = new deck.MapboxLayer({
-                id: 'wind-layer',
-                type: deck.LineLayer,
-                data: stationsData,
-                getSourcePosition: d => [d.longitud, d.latitud, d.elevacion + 80],
-                getTargetPosition: d => [
-                    d.longitud + d.pred_viento_vx_m_s * 0.0035,
-                    d.latitud + d.pred_viento_vy_m_s * 0.0035,
-                    d.elevacion + 80 + d.pred_viento_vz_m_s * 5
-                ],
-                getColor: [56, 189, 248, 220],
-                getWidth: 4,
-                pickable: false
-            });
-            map.addLayer(windLayer);
-
-            // 5. Capa de Estaciones (Deck.gl ColumnLayer - Cilindros Extruidos en 3D)
-            const columnLayer = new deck.MapboxLayer({
+            map.addLayer({
                 id: 'stations-layer',
-                type: deck.ColumnLayer,
-                data: stationsData,
-                diskResolution: 16,
-                radius: 180,
-                extruded: true,
-                elevationScale: 40, // Escala la altura según el PM2.5
-                getPosition: d => [d.longitud, d.latitud, d.elevacion],
-                getElevation: d => d.pred_pm25_ug_m3,
-                getFillColor: d => {
-                    const val = d.pred_pm25_ug_m3;
-                    const ratio = Math.min(Math.max((val - 7) / 13, 0), 1);
-                    // Degradado de Verde a Rojo
-                    return [
-                        Math.round(250 * ratio + 16 * (1 - ratio)),
-                        Math.round(50 * ratio + 185 * (1 - ratio)),
-                        Math.round(50 * ratio + 129 * (1 - ratio)),
-                        210
-                    ];
-                },
-                pickable: true,
-                onHover: info => {
-                    const el = document.getElementById('tooltip');
-                    if (info.object) {
-                        const d = info.object;
-                        el.innerHTML = `
-                            <div style="font-family: 'Inter', sans-serif; font-size: 11px; color: #fff; line-height:1.4;">
-                                <b style="font-size:12px; color:#38bdf8;">Estación SIATA</b><br>
-                                <b>Coordenadas:</b> ${d.latitud.toFixed(4)}°, ${d.longitud.toFixed(4)}°<br>
-                                <b>Altitud:</b> ${d.elevacion.toFixed(0)} msnm<br>
-                                <hr style="border:0; border-top:1px solid rgba(255,255,255,0.15); margin:6px 0;">
-                                <span style="color:#ff5a5f; font-size:11.5px;"><b>PM2.5 Predicho: ${d.pred_pm25_ug_m3.toFixed(2)} ug/m³</b></span><br>
-                                <b>Viento:</b> [${d.pred_viento_vx_m_s.toFixed(2)}, ${d.pred_viento_vy_m_s.toFixed(2)}, ${d.pred_viento_vz_m_s.toFixed(2)}] m/s<br>
-                                <span style="color:#38bdf8;"><b>Emisión Inversa (S): ${d.pred_emision_S_ug_m3_s.toFixed(6)} ug/(m³*s)</b></span>
-                            </div>
-                        `;
-                        el.style.display = 'block';
-                        el.style.left = info.x + 15 + 'px';
-                        el.style.top = info.y + 15 + 'px';
-                    } else {
-                        el.style.display = 'none';
-                    }
+                type: 'fill-extrusion',
+                source: 'stations-source',
+                paint: {
+                    'fill-extrusion-color': ['get', 'color'],
+                    'fill-extrusion-height': ['get', 'height'],
+                    'fill-extrusion-base': 0, // Inicia desde el nivel del suelo del relieve
+                    'fill-extrusion-opacity': 0.85
                 }
             });
-            map.addLayer(columnLayer);
+
+            // 3. Capa de Trayectorias de Dispersión (Estelas) usando líneas nativas (se drapean en el terreno)
+            map.addSource('trajectories-source', {
+                type: 'geojson',
+                data: trajectoriesGeoJSON
+            });
+
+            map.addLayer({
+                id: 'trajectories-layer',
+                type: 'line',
+                source: 'trajectories-source',
+                layout: {
+                    'line-join': 'round',
+                    'line-cap': 'round'
+                },
+                paint: {
+                    'line-color': ['get', 'color'],
+                    'line-width': ['get', 'width'],
+                    'line-opacity': ['get', 'opacity']
+                }
+            });
+
+            // 4. Capa de Vectores de Viento usando líneas nativas (drapeados)
+            map.addSource('wind-source', {
+                type: 'geojson',
+                data: windGeoJSON
+            });
+
+            map.addLayer({
+                id: 'wind-layer',
+                type: 'line',
+                source: 'wind-source',
+                layout: {
+                    'line-join': 'round',
+                    'line-cap': 'round'
+                },
+                paint: {
+                    'line-color': ['get', 'color'],
+                    'line-width': ['get', 'width'],
+                    'line-opacity': 0.85
+                }
+            });
+
+            // --- Controladores de eventos para hover en las estaciones ---
+            map.on('mousemove', 'stations-layer', (e) => {
+                map.getCanvas().style.cursor = 'pointer';
+                if (e.features.length > 0) {
+                    const feature = e.features[0];
+                    const p = feature.properties;
+                    
+                    const el = document.getElementById('tooltip');
+                    el.innerHTML = `
+                        <div style="font-family: 'Inter', sans-serif; font-size: 11px; color: #fff; line-height:1.4;">
+                            <b style="font-size:12px; color:#38bdf8;">Estación SIATA ID: ${p.name || p.id}</b><br>
+                            <b>Coordenadas:</b> ${p.latitud.toFixed(4)}°, ${p.longitud.toFixed(4)}°<br>
+                            <b>Altitud Terreno:</b> ${p.elev.toFixed(0)} msnm<br>
+                            <hr style="border:0; border-top:1px solid rgba(255,255,255,0.15); margin:6px 0;">
+                            <span style="color:#ff5a5f; font-size:11.5px;"><b>PM2.5 Predicho: ${p.pm25.toFixed(2)} ug/m³</b></span><br>
+                            <b>Viento:</b> [${p.vx.toFixed(2)}, ${p.vy.toFixed(2)}, ${p.vz.toFixed(2)}] m/s<br>
+                            <span style="color:#38bdf8;"><b>Emisión Inversa (S): ${p.s.toFixed(6)} ug/(m³*s)</b></span>
+                        </div>
+                    `;
+                    el.style.display = 'block';
+                    el.style.left = e.point.x + 15 + 'px';
+                    el.style.top = e.point.y + 15 + 'px';
+                }
+            });
+
+            map.on('mouseleave', 'stations-layer', () => {
+                map.getCanvas().style.cursor = '';
+                document.getElementById('tooltip').style.display = 'none';
+            });
         });
 
-        // Alternar visualización de las capas Deck.gl
+        // Alternar visualización de capas de Maplibre
         function toggleLayer(layerId, visible) {
             if (map.getLayer(layerId)) {
                 map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
@@ -657,7 +719,7 @@ def generate_3d_map():
 
         // Alternar el Terreno 3D satelital
         function toggleTerrain(visible) {
-            map.setTerrain(visible ? { source: 'terrain', exaggeration: 1.4 } : null);
+            map.setTerrain(visible ? { source: 'terrain', exaggeration: 1.5 } : null);
         }
     </script>
 </body>
@@ -665,7 +727,10 @@ def generate_3d_map():
 """
 
     # Realizar el reemplazo de las variables inyectadas de Python en JS
-    final_html = dashboard_html.replace("{stations_json}", stations_json).replace("{trajectories_json}", trajectories_json)
+    final_html = (dashboard_template
+                  .replace("{stations_geojson_placeholder}", stations_geojson)
+                  .replace("{trajectories_geojson_placeholder}", trajectories_geojson)
+                  .replace("{wind_geojson_placeholder}", wind_geojson))
 
     output_html = "reporte/mapa_3d_interactivo.html"
     os.makedirs(os.path.dirname(output_html), exist_ok=True)
