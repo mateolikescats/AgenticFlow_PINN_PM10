@@ -586,6 +586,49 @@ def generate_3d_map():
             gap: 6px;
             margin-top: 6px;
         }
+        .analysis-tabs {
+            display: flex;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 4px;
+            gap: 4px;
+            margin-top: 6px;
+        }
+        .analysis-tab {
+            flex: 1;
+            text-align: center;
+            padding: 8px;
+            font-size: 11.5px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+        .analysis-tab.active {
+            background: linear-gradient(135deg, #a855f7, #ec4899);
+            color: #fff;
+            box-shadow: 0 2px 8px rgba(236, 72, 153, 0.3);
+        }
+        .analysis-tab:not(.active) {
+            color: #94a3b8;
+        }
+        .analysis-tab:not(.active):hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #f1f5f9;
+        }
+        .analysis-content-panel {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px dashed rgba(255, 255, 255, 0.08);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 6px;
+            transition: all 0.3s ease;
+        }
         .interactive-title {
             font-size: 12px;
             font-weight: 700;
@@ -777,35 +820,60 @@ def generate_3d_map():
                 </div>
             </div>
 
-            <!-- MEJORA 4: Tarjeta de Contribución de Contaminantes en Sidebar -->
-            <div id="contribution-card" class="interactive-card" style="background:rgba(129,140,248,0.04); border-color:rgba(129,140,248,0.3);">
-                <div class="interactive-title" style="color:#818cf8;">
-                    <span>📊 Ficha de Impacto del Receptor</span>
-                    <button class="btn-clear" style="color:#fca5a5;" onclick="document.getElementById('contribution-card').style.display='none'">Cerrar</button>
+            <!-- FASE 3: MÓDULOS DE ANÁLISIS (DE DÓNDE VIENE / HACIA DÓNDE VA) -->
+            <div>
+                <h2>Análisis de Dispersión</h2>
+                <div class="analysis-tabs">
+                    <div id="tab-de-donde-viene" class="analysis-tab active" onclick="setAnalysisMode('de-donde-viene')">
+                        🔍 ¿De dónde viene?
+                    </div>
+                    <div id="tab-hacia-donde-va" class="analysis-tab" onclick="setAnalysisMode('hacia-donde-va')">
+                        🚀 ¿Hacia dónde va?
+                    </div>
                 </div>
-                <div class="interactive-row">
-                    <span>Sensor Seleccionado:</span>
-                    <span id="contrib-station-name" style="font-weight:600; color:#818cf8;">-</span>
-                </div>
-                <div id="contrib-list" style="margin-top:2px;"></div>
-                <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
-                    *Calcula qué porcentaje de la contaminación registrada en el sensor proviene de cada foco (industrial/urbano) usando la distancia inversa ponderada (IDW) de sus estelas de dispersión físicas.
-                </div>
-            </div>
+                
+                <div id="analysis-panel" class="analysis-content-panel">
+                    <!-- Modo: De dónde viene - Instrucciones -->
+                    <div id="msg-de-donde-viene-help" style="font-size: 11px; color: #94a3b8; text-align: center; padding: 10px 5px; line-height: 1.4;">
+                        👉 <b>Análisis de Receptor:</b> Haz clic en cualquier estación receptora (SIATA) en el mapa para ver de qué fuentes proviene su contaminación.
+                    </div>
+                    
+                    <!-- Modo: De dónde viene - Resultados -->
+                    <div id="card-de-donde-viene-results" style="display: none; flex-direction: column; gap: 6px;">
+                        <div class="interactive-title" style="color:#818cf8;">
+                            <span>📊 Ficha de Impacto del Receptor</span>
+                            <button class="btn-clear" style="color:#fca5a5;" onclick="clearAnalysis()">Cerrar</button>
+                        </div>
+                        <div class="interactive-row">
+                            <span>Sensor Seleccionado:</span>
+                            <span id="contrib-station-name" style="font-weight:600; color:#818cf8;">-</span>
+                        </div>
+                        <div id="contrib-list" style="margin-top:2px;"></div>
+                        <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
+                            *Calcula qué porcentaje de la contaminación registrada en el sensor proviene de cada foco (industrial/urbano) usando la distancia inversa ponderada (IDW) de sus estelas de dispersión físicas.
+                        </div>
+                    </div>
 
-            <!-- FASE 3: Tarjeta de Impacto de la Fuente (Hacia dónde va) -->
-            <div id="source-impact-card" class="interactive-card" style="background:rgba(236,72,153,0.04); border-color:rgba(236,72,153,0.3);">
-                <div class="interactive-title" style="color:#ec4899;">
-                    <span>📊 Ficha del Foco Emisor: Impacto Directo</span>
-                    <button class="btn-clear" style="color:#fca5a5;" onclick="clearSourceSelection()">Cerrar</button>
-                </div>
-                <div class="interactive-row">
-                    <span>Foco Seleccionado:</span>
-                    <span id="source-impact-name" style="font-weight:600; color:#ec4899;">-</span>
-                </div>
-                <div id="source-impact-list" style="margin-top:2px;"></div>
-                <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
-                    *Determina la distribución de impacto del contaminante emitido por esta fuente hacia las estaciones receptoras siguiendo su pluma de advección.
+                    <!-- Modo: Hacia dónde va - Instrucciones -->
+                    <div id="msg-hacia-donde-va-help" style="display: none; font-size: 11px; color: #94a3b8; text-align: center; padding: 10px 5px; line-height: 1.4;">
+                        👉 <b>Análisis de Emisor:</b> Haz clic en cualquier foco de emisión (industrial o urbano) para aislar su pluma en 3D y ver qué zonas resultan más contaminadas.
+                    </div>
+                    
+                    <!-- Modo: Hacia dónde va - Resultados -->
+                    <div id="card-hacia-donde-va-results" style="display: none; flex-direction: column; gap: 6px;">
+                        <div class="interactive-title" style="color:#ec4899;">
+                            <span>📊 Ficha del Foco Emisor: Impacto Directo</span>
+                            <button class="btn-clear" style="color:#fca5a5;" onclick="clearAnalysis()">Cerrar</button>
+                        </div>
+                        <div class="interactive-row">
+                            <span>Foco Seleccionado:</span>
+                            <span id="source-impact-name" style="font-weight:600; color:#ec4899;">-</span>
+                        </div>
+                        <div id="source-impact-list" style="margin-top:2px;"></div>
+                        <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
+                            *Determina la distribución de impacto del contaminante emitido por esta fuente hacia las estaciones receptoras siguiendo su pluma de advección.
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -928,6 +996,8 @@ def generate_3d_map():
         // --- FASE 3: Foco de Dispersión Activo ---
         let activeSourceId = null;
         let activeSourceType = null;
+        let activeAnalysisMode = 'de-donde-viene'; // 'de-donde-viene' o 'hacia-donde-va'
+        let activeStationId = null;
 
         // Generar geometrías de polígonos hexagonales para fill-extrusion nativa
         function createHexagon(center, radius) {
@@ -1197,10 +1267,11 @@ def generate_3d_map():
                 }
             });
 
-            // Inicializar simulación temporal, hover tooltips y sonda al hacer clic
+            // Inicializar simulación temporal, hover tooltips, sonda y panel de análisis
             initAnimation();
             setupTooltips();
             setupInteractiveProbe();
+            updateAnalysisDOM();
         });
 
         // Alternar visualización de capas de Maplibre
@@ -1389,8 +1460,6 @@ def generate_3d_map():
             contributions.sort((a, b) => b.percentage - a.percentage);
             
             // Dibujar tabla en barra lateral
-            const el = document.getElementById('contribution-card');
-            el.style.display = 'flex';
             document.getElementById('contrib-station-name').innerText = st_name;
             
             let html = '<table style="width:100%; font-size:11px; margin-top:8px; border-collapse:collapse; color:#e2e8f0;">';
@@ -1416,18 +1485,69 @@ def generate_3d_map():
             return ic ? ic.properties.name.replace("Ladera de ", "").replace(" (Norte)", "").replace(" (Sur)", "") : `Foco Industrial #${id}`;
         }
 
-        // --- FASE 3: MÉTODOS DE IMPACTO DE FUENTES ("HACIA DÓNDE VA") ---
+        // --- FASE 3: MÉTODOS DE TABS Y ANÁLISIS ---
+        function setAnalysisMode(mode) {
+            activeAnalysisMode = mode;
+            
+            // Actualizar botones de pestañas
+            document.getElementById('tab-de-donde-viene').classList.toggle('active', mode === 'de-donde-viene');
+            document.getElementById('tab-hacia-donde-va').classList.toggle('active', mode === 'hacia-donde-va');
+            
+            // Limpiar cualquier estado activo anterior para evitar visualizaciones cruzadas confusas
+            clearAnalysis();
+        }
+
+        function clearAnalysis() {
+            activeStationId = null;
+            activeSourceId = null;
+            activeSourceType = null;
+            
+            updateTrajectoryHighlight();
+            updateParticles(tGlobal);
+            updateAnalysisDOM();
+        }
+
+        function updateAnalysisDOM() {
+            document.getElementById('msg-de-donde-viene-help').style.display = 'none';
+            document.getElementById('card-de-donde-viene-results').style.display = 'none';
+            document.getElementById('msg-hacia-donde-va-help').style.display = 'none';
+            document.getElementById('card-hacia-donde-va-results').style.display = 'none';
+            
+            if (activeAnalysisMode === 'de-donde-viene') {
+                if (activeStationId === null) {
+                    document.getElementById('msg-de-donde-viene-help').style.display = 'block';
+                    document.getElementById('analysis-panel').style.borderColor = 'rgba(129, 140, 248, 0.3)';
+                    document.getElementById('analysis-panel').style.background = 'rgba(129, 140, 248, 0.02)';
+                } else {
+                    document.getElementById('card-de-donde-viene-results').style.display = 'flex';
+                    document.getElementById('analysis-panel').style.borderColor = 'rgba(129, 140, 248, 0.6)';
+                    document.getElementById('analysis-panel').style.background = 'rgba(129, 140, 248, 0.05)';
+                }
+            } else {
+                if (activeSourceId === null) {
+                    document.getElementById('msg-hacia-donde-va-help').style.display = 'block';
+                    document.getElementById('analysis-panel').style.borderColor = 'rgba(236, 72, 153, 0.3)';
+                    document.getElementById('analysis-panel').style.background = 'rgba(236, 72, 153, 0.02)';
+                } else {
+                    document.getElementById('card-hacia-donde-va-results').style.display = 'flex';
+                    document.getElementById('analysis-panel').style.borderColor = 'rgba(236, 72, 153, 0.6)';
+                    document.getElementById('analysis-panel').style.background = 'rgba(236, 72, 153, 0.05)';
+                }
+            }
+        }
+
         function selectSource(src_id, src_type, src_name, src_lon, src_lat) {
+            // Cambiar automáticamente la pestaña a "hacia-donde-va"
+            activeAnalysisMode = 'hacia-donde-va';
+            document.getElementById('tab-hacia-donde-va').classList.add('active');
+            document.getElementById('tab-de-donde-viene').classList.remove('active');
+            
+            activeStationId = null;
             activeSourceId = src_id;
             activeSourceType = src_type;
             
-            // Cerrar tarjeta de receptor para evitar confusión
-            document.getElementById('contribution-card').style.display = 'none';
-
-            // Actualizar resaltado de trayectorias
             updateTrajectoryHighlight();
 
-            // Calcular receptores afectados
             const traj = trajectoriesData.find(t => t.station_id === src_id && t.type === src_type);
             if (traj) {
                 const points = traj.points;
@@ -1441,7 +1561,6 @@ def generate_3d_map():
                         if (d < min_d) min_d = d;
                     });
                     
-                    // IDW peso con suavizado
                     let w = 1.0 / (min_d * min_d + 0.0004);
                     receptors.push({
                         id: p.id,
@@ -1457,9 +1576,6 @@ def generate_3d_map():
                 
                 receptors.sort((a, b) => b.percentage - a.percentage);
                 
-                // Mostrar tarjeta
-                const el = document.getElementById('source-impact-card');
-                el.style.display = 'flex';
                 document.getElementById('source-impact-name').innerText = src_name;
                 
                 let html = '<table style="width:100%; font-size:11px; margin-top:8px; border-collapse:collapse; color:#e2e8f0;">';
@@ -1473,13 +1589,12 @@ def generate_3d_map():
                 document.getElementById('source-impact-list').innerHTML = html;
             }
 
-            // Forzar actualización inmediata del flujo de partículas
+            updateAnalysisDOM();
             updateParticles(tGlobal);
         }
 
         function updateTrajectoryHighlight() {
             if (activeSourceId === null) {
-                // Restaurar grosores y opacidades por defecto
                 map.setPaintProperty('urban-trajectories-layer', 'line-width', ['get', 'width']);
                 map.setPaintProperty('urban-trajectories-layer', 'line-opacity', ['get', 'opacity']);
                 map.setPaintProperty('industrial-trajectories-layer', 'line-width', ['get', 'width']);
@@ -1488,7 +1603,6 @@ def generate_3d_map():
                 map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.85);
                 map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.85);
             } else {
-                // Si hay una fuente seleccionada, aplicar el resaltado/brillo y atenuar el resto
                 if (activeSourceType === 'urban') {
                     map.setPaintProperty('urban-trajectories-layer', 'line-width', 
                         ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
@@ -1496,11 +1610,9 @@ def generate_3d_map():
                     map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 
                         ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
                     );
-                    // Atenuar todas las industriales
                     map.setPaintProperty('industrial-trajectories-layer', 'line-width', ['get', 'width']);
                     map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 0.08);
                     
-                    // Resaltar foco emisor seleccionado, atenuar los demás
                     map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
                         ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
                     );
@@ -1512,11 +1624,9 @@ def generate_3d_map():
                     map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 
                         ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
                     );
-                    // Atenuar todas las urbanas
                     map.setPaintProperty('urban-trajectories-layer', 'line-width', ['get', 'width']);
                     map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 0.08);
                     
-                    // Resaltar foco emisor seleccionado, atenuar los demás
                     map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
                         ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
                     );
@@ -1820,10 +1930,20 @@ def generate_3d_map():
             
             map.on('click', 'stations-layer', (e) => {
                 if (e.features.length > 0) {
-                    // Cerrar tarjeta de foco emisor
-                    document.getElementById('source-impact-card').style.display = 'none';
+                    // Cambiar automáticamente la pestaña a "de-donde-viene"
+                    activeAnalysisMode = 'de-donde-viene';
+                    document.getElementById('tab-de-donde-viene').classList.add('active');
+                    document.getElementById('tab-hacia-donde-va').classList.remove('active');
+                    
+                    activeSourceId = null;
+                    activeSourceType = null;
+                    updateTrajectoryHighlight();
+                    updateParticles(tGlobal);
+
                     const p = e.features[0].properties;
+                    activeStationId = p.id;
                     calculateContribution(p.longitud, p.latitud, p.name);
+                    updateAnalysisDOM();
                 }
             });
 
