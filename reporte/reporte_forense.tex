@@ -1,42 +1,55 @@
 \documentclass[11pt,a4paper]{article}
 \usepackage[utf8]{inputenc}
 \usepackage[spanish]{babel}
-\usepackage{amsmath, amssymb, booktabs, geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{geometry}
 \geometry{margin=1in}
-\title{Reporte Forense Ambiental y Atribución Atmosférica (Últimas 48 Horas)}
+\title{Reporte Forense Ambiental y Atribución Atmosférica (Últimas 96 Horas)}
 \author{Departamento de Análisis Forense Ambiental}
 \date{\today}
 
 \begin{document}
 \maketitle
 
-\section{Dictamen Termodinámico (iPINN)}
-El modelo iPINN ha validado la estabilidad atmosférica con un \textbf{Physics Violation Index (PVI)} de 0.025999, cumpliendo con las restricciones de incompresibilidad. La estratificación térmica observada confirma una inversión térmica atrapante con energía cinética turbulenta (TKE) atenuada.
-
-\section{Atribución Forense de Emisiones}
-Se han identificado dos focos críticos mediante clustering GMM:
+\section{Dictamen Termodinámico (Validación iPINN)}
+El análisis de consistencia física (PVI: 0.025999) confirma una atmósfera estable con inversión térmica persistente. La divergencia del campo de velocidades es despreciable, validando la incompresibilidad del flujo.
 
 \begin{table}[h]
 \centering
-\begin{tabular}{lcccc}
+\begin{tabular}{lc}
 \toprule
-\textbf{Cúmulo} & \textbf{Coordenadas} & \textbf{Tasa Emisión (S)} & \textbf{PM2.5 (ug/m3)} \\
+\textbf{Métrica} & \textbf{Valor} \\
 \midrule
-0: Eje Central & (-0.39, 0.05) & 0.000249 & 17.18 \\
-1: Sur/Ladera & (-0.62, -0.34) & 0.000327 & 17.59 \\
+Physics Violation Index (PVI) & 0.025999 \\
+Divergencia Máxima Absoluta & 0.364332 \\
+Estado de Estabilidad & Estable (Inversión Térmica) \\
 \bottomrule
 \end{tabular}
-\caption{Métricas de emisión por sector.}
+\caption{Indicadores de consistencia física.}
 \end{table}
 
-\section{Plan de Acción Adaptativo}
-Debido a la nula capacidad de dispersión, se dictan las siguientes medidas:
+\section{Atribución Geoespacial de Emisiones (PM2.5)}
+Se identificaron dos cúmulos críticos mediante clustering GMM:
+
 \begin{itemize}
-    \item \textbf{Cúmulo 1 (Industrial):} Reducción del 50\% en procesos de combustión y restricción de carga pesada.
-    \item \textbf{Cúmulo 0 (Movilidad):} Pico y placa ambiental extendido a 4 dígitos y teletrabajo obligatorio (70\% sector público).
-    \item \textbf{Salud Pública:} Suspensión de actividades al aire libre y activación de vigilancia epidemiológica.
+    \item \textbf{Cúmulo 0 (Ladera Occidental):} Tasa de emisión $S = 0.000307 \mu g/(m^3 s)$. Foco residencial y de alta pendiente.
+    \item \textbf{Cúmulo 1 (Eje Central):} Tasa de emisión $S = 0.000234 \mu g/(m^3 s)$. Corredor del Río Medellín.
 \end{itemize}
 
-\section{Conclusión}
-La simulación es termodinámicamente consistente. La intervención es obligatoria para mitigar el impacto de la inversión térmica sobre la salud pública.
+\section{Plan de Acción Adaptativo (PAA-96H)}
+Ante la alerta Naranja-Roja, se establecen las siguientes medidas:
+
+\subsection{Movilidad}
+\begin{itemize}
+    \item Extensión de Pico y Placa a 4 dígitos en el corredor del Río.
+    \item Restricción total de carga pesada (pre-2015) de 05:00 a 20:00.
+\end{itemize}
+
+\subsection{Regulación Industrial}
+\begin{itemize}
+    \item Suspensión de procesos de combustión en zona de influencia del Cúmulo 0.
+    \item Auditoría obligatoria de filtros HEPA en fuentes fijas de la ladera.
+\end{itemize}
+
 \end{document}

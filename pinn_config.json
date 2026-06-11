@@ -1,1 +1,1 @@
-{"epochs": 2000, "learning_rate": 0.01, "lbfgs_iters": 500}
+{"epochs": 100000, "learning_rate": 0.005, "lbfgs_iters": 1500}
