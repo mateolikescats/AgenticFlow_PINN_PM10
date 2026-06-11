@@ -1050,6 +1050,7 @@ def generate_3d_map():
         let activeSourceType = null;
         let activeAnalysisMode = 'de-donde-viene'; // 'de-donde-viene' o 'hacia-donde-va'
         let activeStationId = null;
+        let activeContributingSources = [];
 
         // Generar geometrías de polígonos hexagonales para fill-extrusion nativa
         function createHexagon(center, radius) {
@@ -1214,6 +1215,38 @@ def generate_3d_map():
                 source: 'probe-source',
                 paint: {
                     'circle-color': '#facc15',
+                    'circle-radius': 7,
+                    'circle-stroke-width': 2,
+                    'circle-stroke-color': '#060814',
+                    'circle-opacity': 1.0
+                },
+                filter: ['==', '$type', 'Point']
+            });
+
+            // Capa para Trayectoria Retrógada (De Dónde Viene - Viento hacia atrás)
+            map.addSource('back-trajectory-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+            map.addLayer({
+                id: 'back-trajectory-layer-line',
+                type: 'line',
+                source: 'back-trajectory-source',
+                layout: { 'line-join': 'round', 'line-cap': 'round' },
+                paint: {
+                    'line-color': '#06b6d4', // Celeste brillante / Cian
+                    'line-width': 4.5,
+                    'line-opacity': 0.85,
+                    'line-dasharray': [2, 2] // Discontinua para indicar procedencia
+                },
+                filter: ['==', '$type', 'LineString']
+            });
+            map.addLayer({
+                id: 'back-trajectory-layer-point',
+                type: 'circle',
+                source: 'back-trajectory-source',
+                paint: {
+                    'circle-color': '#06b6d4',
                     'circle-radius': 7,
                     'circle-stroke-width': 2,
                     'circle-stroke-color': '#060814',
@@ -1501,6 +1534,56 @@ def generate_3d_map():
             document.getElementById('probe-card').style.display = 'none';
         }
 
+        // Función para calcular y renderizar la trayectoria retrógrada (viento hacia atrás)
+        function createBackwardTrajectory(lon, lat) {
+            const points = [];
+            let cur_lon = lon;
+            let cur_lat = lat;
+            
+            points.push([cur_lon, cur_lat]);
+            
+            // Factor dt para simular la advección geográfica inversa
+            const dt = 0.0015;
+            for (let step = 0; step < 25; step++) {
+                const [vx, vy] = interpolateWindJS(cur_lon, cur_lat);
+                // Restamos la velocidad para ir "hacia atrás" en el viento
+                cur_lon -= vx * dt;
+                cur_lat -= vy * dt;
+                
+                // Confinar al cuadro geográfico de simulación
+                cur_lon = Math.min(Math.max(cur_lon, -75.7), -75.3);
+                cur_lat = Math.min(Math.max(cur_lat, 6.0), 6.45);
+                
+                points.push([cur_lon, cur_lat]);
+            }
+
+            const backGeoJSON = {
+                type: 'FeatureCollection',
+                features: [
+                    {
+                        type: 'Feature',
+                        properties: {},
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [lon, lat]
+                        }
+                    },
+                    {
+                        type: 'Feature',
+                        properties: {},
+                        geometry: {
+                            type: 'LineString',
+                            coordinates: points
+                        }
+                    }
+                ]
+            };
+
+            if (map.getSource('back-trajectory-source')) {
+                map.getSource('back-trajectory-source').setData(backGeoJSON);
+            }
+        }
+
         // --- MATRIZ DE CONTRIBUCIÓN DE FUENTES (MEJORA 4) ---
         function calculateContribution(st_lon, st_lat, st_name) {
             const contributions = [];
@@ -1530,6 +1613,11 @@ def generate_3d_map():
             
             contributions.sort((a, b) => b.percentage - a.percentage);
             
+            // Guardar fuentes contribuyentes principales (ej. aporte > 10%)
+            activeContributingSources = contributions
+                .filter(c => c.percentage > 10.0)
+                .map(c => c.id);
+
             document.getElementById('contrib-station-name').innerText = st_name;
             
             let html = '<table style="width:100%; font-size:11px; margin-top:8px; border-collapse:collapse; color:#e2e8f0;">';
@@ -1575,6 +1663,11 @@ def generate_3d_map():
             activeStationId = null;
             activeSourceId = null;
             activeSourceType = null;
+            activeContributingSources = [];
+            
+            if (map.getSource('back-trajectory-source')) {
+                map.getSource('back-trajectory-source').setData({ type: 'FeatureCollection', features: [] });
+            }
             
             if (forecastChartInstance !== null) {
                 forecastChartInstance.destroy();
@@ -1841,7 +1934,7 @@ def generate_3d_map():
         }
 
         function updateTrajectoryHighlight() {
-            if (activeSourceId === null) {
+            if (activeSourceId === null && activeStationId === null) {
                 map.setPaintProperty('urban-trajectories-layer', 'line-width', ['get', 'width']);
                 map.setPaintProperty('urban-trajectories-layer', 'line-opacity', ['get', 'opacity']);
                 map.setPaintProperty('industrial-trajectories-layer', 'line-width', ['get', 'width']);
@@ -1849,7 +1942,8 @@ def generate_3d_map():
                 
                 map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.85);
                 map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.85);
-            } else {
+            } else if (activeSourceId !== null) {
+                // Modo hacia-donde-va (foco emisor seleccionado)
                 if (activeSourceType === 'urban') {
                     map.setPaintProperty('urban-trajectories-layer', 'line-width', 
                         ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
@@ -1879,6 +1973,29 @@ def generate_3d_map():
                     );
                     map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
                 }
+            } else if (activeStationId !== null) {
+                // Modo de-donde-viene (receptor seleccionado): Resaltar estelas de los focos que aportan
+                const contribFilter = ['in', ['get', 'station_id'], ['literal', activeContributingSources]];
+                
+                map.setPaintProperty('urban-trajectories-layer', 'line-width', 
+                    ['case', contribFilter, 5.0, 1.0]
+                );
+                map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 
+                    ['case', contribFilter, 0.7, 0.05]
+                );
+                map.setPaintProperty('industrial-trajectories-layer', 'line-width', 
+                    ['case', contribFilter, 5.0, 1.0]
+                );
+                map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 
+                    ['case', contribFilter, 0.7, 0.05]
+                );
+                
+                map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
+                    ['case', ['in', ['get', 'id'], ['literal', activeContributingSources]], 0.85, 0.15]
+                );
+                map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
+                    ['case', ['in', ['get', 'id'], ['literal', activeContributingSources]], 0.85, 0.15]
+                );
             }
         }
 
@@ -2089,6 +2206,14 @@ def generate_3d_map():
                                     // Focos no seleccionados: atenuar a 10%
                                     opacity = opacity * 0.10;
                                 }
+                            } else if (activeStationId !== null) {
+                                // Modo de-donde-viene (estación seleccionada): resaltar aportes
+                                if (activeContributingSources.includes(stationId)) {
+                                    radius = radius * 1.15;
+                                    opacity = Math.min(opacity * 1.2, 0.90);
+                                } else {
+                                    opacity = opacity * 0.10;
+                                }
                             }
 
                             // --- FASE 4: Aplicar factor de mitigación interactivo ---
@@ -2183,12 +2308,14 @@ def generate_3d_map():
                     
                     activeSourceId = null;
                     activeSourceType = null;
-                    updateTrajectoryHighlight();
-                    updateParticles(tGlobal);
-
+                    
                     const p = e.features[0].properties;
                     activeStationId = p.id;
                     calculateContribution(p.longitud, p.latitud, p.name);
+                    createBackwardTrajectory(p.longitud, p.latitud);
+                    
+                    updateTrajectoryHighlight();
+                    updateParticles(tGlobal);
                     updateAnalysisDOM();
                 }
             });
