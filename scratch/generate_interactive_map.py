@@ -277,7 +277,29 @@ def generate_3d_map():
         "features": wind_features
     })
 
-    # Plantilla HTML Premium de Visualización Científica
+    # 5. Generar GeoJSON para la Capa de Inversión Térmica
+    inversion_geojson = json.dumps({
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "properties": {
+                "height": 2100.0,
+                "base": 2092.0
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [-75.7, 6.0],
+                    [-75.3, 6.0],
+                    [-75.3, 6.45],
+                    [-75.7, 6.45],
+                    [-75.7, 6.0]
+                ]]
+            }
+        }]
+    })
+
+    # Plantilla HTML Premium de Visualización Científica con 4 Mejoras Científicas Integradas
     dashboard_template = """<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -553,6 +575,43 @@ def generate_3d_map():
             text-align: center;
         }
         
+        /* Paneles Interactivos Premium (Sonda y Ficha Contribución) */
+        .interactive-card {
+            background: rgba(56, 189, 248, 0.04);
+            border: 1px dashed rgba(56, 189, 248, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            display: none;
+            flex-direction: column;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        .interactive-title {
+            font-size: 12px;
+            font-weight: 700;
+            color: #38bdf8;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .btn-clear {
+            background: transparent;
+            border: none;
+            color: #fca5a5;
+            cursor: pointer;
+            font-size: 10.5px;
+            font-weight: 600;
+        }
+        .btn-clear:hover {
+            text-decoration: underline;
+        }
+        .interactive-row {
+            font-size: 11px;
+            display: flex;
+            justify-content: space-between;
+            color: #cbd5e1;
+        }
+
         /* Leyenda */
         .legend-list {
             display: flex;
@@ -604,6 +663,14 @@ def generate_3d_map():
             width: 16px;
             margin-top: 7px;
         }
+        .icon-inversion {
+            background: rgba(6, 182, 212, 0.25);
+            border: 1.5px solid #06b6d4;
+            border-radius: 2px;
+            width: 14px;
+            height: 8px;
+            margin-top: 5px;
+        }
         
         #tooltip {
             position: absolute;
@@ -649,6 +716,11 @@ def generate_3d_map():
                         Relieve 3D Satelital (Esri)
                     </label>
                     <label class="toggle-label">
+                        <input type="checkbox" id="toggle-inversion" checked onchange="toggleLayer('inversion-layer', this.checked)">
+                        <span class="toggle-custom"></span>
+                        Capa Inversión Térmica (2100 msnm)
+                    </label>
+                    <label class="toggle-label">
                         <input type="checkbox" id="toggle-stations" checked onchange="toggleLayer('stations-layer', this.checked)">
                         <span class="toggle-custom"></span>
                         Receptores SIATA (Sensores)
@@ -686,16 +758,52 @@ def generate_3d_map():
                 </div>
             </div>
 
+            <!-- MEJORA 2: Tarjeta de Sonda Interactiva en Sidebar -->
+            <div id="probe-card" class="interactive-card">
+                <div class="interactive-title">
+                    <span>📡 Sonda de Viento Activa</span>
+                    <button class="btn-clear" onclick="clearProbe()">Eliminar</button>
+                </div>
+                <div class="interactive-row">
+                    <span>Coordenadas Sonda:</span>
+                    <span id="probe-coords" style="font-weight:600; color:#facc15;">-</span>
+                </div>
+                <div class="interactive-row">
+                    <span>Vector Viento [vx, vy]:</span>
+                    <span id="probe-wind" style="font-weight:600; color:#38bdf8;">-</span>
+                </div>
+                <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
+                    *Muestra la trayectoria tridimensional que una partícula liberada en ese punto seguiría de acuerdo con la física del viento resuelta por la iPINN.
+                </div>
+            </div>
+
+            <!-- MEJORA 4: Tarjeta de Contribución de Contaminantes en Sidebar -->
+            <div id="contribution-card" class="interactive-card" style="background:rgba(129,140,248,0.04); border-color:rgba(129,140,248,0.3);">
+                <div class="interactive-title" style="color:#818cf8;">
+                    <span>📊 Ficha de Impacto del Receptor</span>
+                    <button class="btn-clear" style="color:#fca5a5;" onclick="document.getElementById('contribution-card').style.display='none'">Cerrar</button>
+                </div>
+                <div class="interactive-row">
+                    <span>Sensor Seleccionado:</span>
+                    <span id="contrib-station-name" style="font-weight:600; color:#818cf8;">-</span>
+                </div>
+                <div id="contrib-list" style="margin-top:2px;"></div>
+                <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
+                    *Calcula qué porcentaje de la contaminación registrada en el sensor proviene de cada foco (industrial/urbano) usando la distancia inversa ponderada (IDW) de sus estelas de dispersión físicas.
+                </div>
+            </div>
+
             <div>
                 <h2>Simulación de Flujo Temporal</h2>
                 <div class="animation-panel">
                     <div class="anim-row">
                         <button id="btn-play" class="btn-primary">⏸ Pausar</button>
-                        <span id="label-time" style="font-size: 12px; font-weight: 600; color: #38bdf8;">Paso: 0.0</span>
+                        <!-- MEJORA 3: Reloj Digital de Hora Atmosférica -->
+                        <span id="label-clock" style="font-size: 12.5px; font-weight: 700; color: #38bdf8;">06:00 AM</span>
                     </div>
                     <input type="range" id="slider-time" min="0" max="15" step="0.1" value="0">
-                    <div class="anim-row" style="font-size: 11px;">
-                        <span>Velocidad de simulación:</span>
+                    <div class="anim-row" style="font-size: 11px; margin-top: 4px;">
+                        <span id="label-time" style="color:#64748b;">Paso: 0.0</span>
                         <select id="select-speed" class="select-dark">
                             <option value="0.02">Lento</option>
                             <option value="0.05" selected>Normal</option>
@@ -766,6 +874,12 @@ def generate_3d_map():
                         </div>
                     </div>
                     <div class="legend-item">
+                        <div class="legend-icon icon-inversion"></div>
+                        <div>
+                            <b>Capa de Inversión Térmica:</b> Plano de aire caliente superior que atrapa el PM2.5 en el valle (glowing glass a 2100 msnm).
+                        </div>
+                    </div>
+                    <div class="legend-item">
                         <div class="legend-icon icon-wind"></div>
                         <div>
                             <b>Vectores de Viento:</b> Campo de velocidades del viento simulado bajo restricciones de incompresibilidad.
@@ -790,6 +904,7 @@ def generate_3d_map():
         const urbanTrajectoriesGeoJSON = {urban_trajectories_geojson_placeholder};
         const industrialTrajectoriesGeoJSON = {industrial_trajectories_geojson_placeholder};
         const windGeoJSON = {wind_geojson_placeholder};
+        const inversionGeoJSON = {inversion_geojson_placeholder};
         const trajectoriesData = {trajectories_data_placeholder};
         
         let activeMetric = 'S'; // 'S' o 'u'
@@ -893,6 +1008,54 @@ def generate_3d_map():
                 maxzoom: 15
             });
             map.setTerrain({ source: 'terrain', exaggeration: 1.5 });
+
+            // MEJORA 1: Capa de Inversión Térmica flotante 3D (tipo glowing glass a 2100 msnm)
+            map.addSource('inversion-source', {
+                type: 'geojson',
+                data: inversionGeoJSON
+            });
+            map.addLayer({
+                id: 'inversion-layer',
+                type: 'fill-extrusion',
+                source: 'inversion-source',
+                paint: {
+                    'fill-extrusion-color': '#06b6d4',
+                    'fill-extrusion-height': ['get', 'height'],
+                    'fill-extrusion-base': ['get', 'base'],
+                    'fill-extrusion-opacity': 0.23
+                }
+            });
+
+            // MEJORA 2: Soportes para Sonda de Viento Interactiva
+            map.addSource('probe-source', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+            map.addLayer({
+                id: 'probe-layer-line',
+                type: 'line',
+                source: 'probe-source',
+                layout: { 'line-join': 'round', 'line-cap': 'round' },
+                paint: {
+                    'line-color': '#facc15',
+                    'line-width': 4.5,
+                    'line-opacity': 0.9
+                },
+                filter: ['==', '$type', 'LineString']
+            });
+            map.addLayer({
+                id: 'probe-layer-point',
+                type: 'circle',
+                source: 'probe-source',
+                paint: {
+                    'circle-color': '#facc15',
+                    'circle-radius': 7,
+                    'circle-stroke-width': 2,
+                    'circle-stroke-color': '#060814',
+                    'circle-opacity': 1.0
+                },
+                filter: ['==', '$type', 'Point']
+            });
 
             // 2. Capa de Estelas de Dispersión (Urbana)
             map.addSource('urban-trajectories-source', {
@@ -1014,9 +1177,10 @@ def generate_3d_map():
                 }
             });
 
-            // Inicializar simulación temporal y hover tooltips
+            // Inicializar simulación temporal, hover tooltips y sonda al hacer clic
             initAnimation();
             setupTooltips();
+            setupInteractiveProbe();
         });
 
         // Alternar visualización de capas de Maplibre
@@ -1060,7 +1224,179 @@ def generate_3d_map():
             updateParticles(tGlobal);
         }
 
-        // --- SISTEMA DE ANIMACIÓN DE PARTÍCULAS (CÚMULOS) ---
+        // --- INTERPOLADOR DE VIENTOS Y SONDA INTERACTIVA (MEJORA 2) ---
+        function getTerrainHeightJS(lon, lat) {
+            let y_scaled = (lat - 6.0) / 0.45;
+            let z_center = 1700.0 - 420.0 * y_scaled;
+            let lon_center = -75.61 + 0.28 * y_scaled;
+            let dist_from_center = lon - lon_center;
+            let z_surf = z_center + 600.0 * Math.pow(dist_from_center / 0.15, 2);
+            return z_surf - 80.0;
+        }
+
+        function interpolateWindJS(lon, lat) {
+            // Estaciones SIATA inyectadas
+            let lons = stationsGeoJSON.features.map(f => f.properties.longitud);
+            let lats = stationsGeoJSON.features.map(f => f.properties.latitud);
+            let vxs = stationsGeoJSON.features.map(f => f.properties.vx);
+            let vys = stationsGeoJSON.features.map(f => f.properties.vy);
+            
+            let sum_weights = 0;
+            let sum_vx = 0;
+            let sum_vy = 0;
+            
+            for (let i = 0; i < lons.length; i++) {
+                let dist = Math.sqrt((lons[i] - lon)**2 + (lats[i] - lat)**2);
+                if (dist < 1e-5) {
+                    return [vxs[i], vys[i]];
+                }
+                let w = 1.0 / (dist * dist);
+                sum_weights += w;
+                sum_vx += vxs[i] * w;
+                sum_vy += vys[i] * w;
+            }
+            
+            if (sum_weights === 0) return [0, 0];
+            return [sum_vx / sum_weights, sum_vy / sum_weights];
+        }
+
+        function setupInteractiveProbe() {
+            map.on('click', (e) => {
+                // Evitar clics sobre estaciones para no solapar con la ficha de contribución
+                const features = map.queryRenderedFeatures(e.point, { layers: ['stations-layer'] });
+                if (features.length > 0) return;
+
+                const lon = e.lngLat.lng;
+                const lat = e.lngLat.lat;
+
+                createWindProbe(lon, lat);
+            });
+        }
+
+        function createWindProbe(lon, lat) {
+            const points = [];
+            let cur_lon = lon;
+            let cur_lat = lat;
+            
+            points.push([cur_lon, cur_lat]);
+            
+            // Factor dt para simular la advección geográfica
+            const dt = 0.0015;
+            for (let step = 0; step < 20; step++) {
+                const [vx, vy] = interpolateWindJS(cur_lon, cur_lat);
+                cur_lon += vx * dt;
+                cur_lat += vy * dt;
+                
+                // Confinar al cuadro
+                cur_lon = Math.min(Math.max(cur_lon, -75.7), -75.3);
+                cur_lat = Math.min(Math.max(cur_lat, 6.0), 6.45);
+                
+                points.push([cur_lon, cur_lat]);
+            }
+
+            const probeGeoJSON = {
+                type: 'FeatureCollection',
+                features: [
+                    {
+                        type: 'Feature',
+                        properties: {},
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [lon, lat]
+                        }
+                    },
+                    {
+                        type: 'Feature',
+                        properties: {},
+                        geometry: {
+                            type: 'LineString',
+                            coordinates: points
+                        }
+                    }
+                ]
+            };
+
+            if (map.getSource('probe-source')) {
+                map.getSource('probe-source').setData(probeGeoJSON);
+            }
+
+            // Actualizar interfaz
+            document.getElementById('probe-card').style.display = 'flex';
+            document.getElementById('probe-coords').innerText = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
+            
+            let [vx_init, vy_init] = interpolateWindJS(lon, lat);
+            document.getElementById('probe-wind').innerText = `[${vx_init.toFixed(2)}, ${vy_init.toFixed(2)}] m/s`;
+        }
+
+        function clearProbe() {
+            if (map.getSource('probe-source')) {
+                map.getSource('probe-source').setData({ type: 'FeatureCollection', features: [] });
+            }
+            document.getElementById('probe-card').style.display = 'none';
+        }
+
+        // --- MATRIZ DE CONTRIBUCIÓN DE FUENTES (MEJORA 4) ---
+        function calculateContribution(st_lon, st_lat, st_name) {
+            const contributions = [];
+            
+            trajectoriesData.forEach(traj => {
+                // Calcular distancia mínima de la trayectoria al receptor
+                let min_d = Infinity;
+                traj.points.forEach(pt => {
+                    let d = Math.sqrt((pt[0] - st_lon)**2 + (pt[1] - st_lat)**2);
+                    if (d < min_d) min_d = d;
+                });
+                
+                // IDW peso con suavizado
+                let weight = 1.0 / (min_d * min_d + 0.0004);
+                
+                // Multiplicar por la intensidad física de la fuente
+                let source_intensity = traj.type === 'industrial' ? traj.emision * 1200.0 : traj.pm25 * 0.06;
+                
+                contributions.push({
+                    id: traj.station_id,
+                    name: traj.type === 'urban' ? getUrbanName(traj.station_id) : getIndustrialName(traj.station_id),
+                    weight: weight * source_intensity,
+                    type: traj.type
+                });
+            });
+            
+            let total_weight = contributions.reduce((sum, c) => sum + c.weight, 0);
+            contributions.forEach(c => {
+                c.percentage = total_weight > 0 ? (c.weight / total_weight) * 100.0 : 0.0;
+            });
+            
+            contributions.sort((a, b) => b.percentage - a.percentage);
+            
+            // Dibujar tabla en barra lateral
+            const el = document.getElementById('contribution-card');
+            el.style.display = 'flex';
+            document.getElementById('contrib-station-name').innerText = st_name;
+            
+            let html = '<table style="width:100%; font-size:11px; margin-top:8px; border-collapse:collapse; color:#e2e8f0;">';
+            html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.12); color:#64748b; font-weight:600;"><th style="text-align:left; padding:4px 0;">Foco de Origen</th><th style="text-align:right; padding:4px 0;">Aporte</th></tr>';
+            
+            contributions.slice(0, 5).forEach(c => {
+                let color = c.type === 'urban' ? '#38bdf8' : '#ec4899';
+                let label = c.type === 'urban' ? 'Urbano' : 'Ladera';
+                html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);"><td style="padding:6px 0; text-align:left;"><span style="color:${color}; font-weight:600;">${c.name}</span> <span style="font-size:8.5px; color:#64748b;">(${label})</span></td><td style="padding:6px 0; text-align:right; font-weight:700;">${c.percentage.toFixed(1)}%</td></tr>`;
+            });
+            html += '</table>';
+            
+            document.getElementById('contrib-list').innerHTML = html;
+        }
+
+        function getUrbanName(id) {
+            const uc = urbanSourcesGeoJSON.features.find(f => f.properties.id === id);
+            return uc ? uc.properties.name.replace(" (Norte)", "").replace(" (Sur)", "").replace(" (Centro)", "").replace(" (Tránsito)", "").replace(" (Tráfico)", "").replace(" (Industrial)", "") : `Foco Urbano #${id}`;
+        }
+        
+        function getIndustrialName(id) {
+            const ic = industrialSourcesGeoJSON.features.find(f => f.properties.id === id);
+            return ic ? ic.properties.name.replace("Ladera de ", "").replace(" (Norte)", "").replace(" (Sur)", "") : `Foco Industrial #${id}`;
+        }
+
+        // --- SISTEMA DE ANIMACIÓN Y RELOJ SOLAR (MEJORA 3) ---
         let isPlaying = true;
         let tGlobal = 0.0;
         let animationSpeed = 0.05;
@@ -1081,6 +1417,7 @@ def generate_3d_map():
                 tGlobal = parseFloat(e.target.value);
                 document.getElementById('label-time').innerText = `Paso: ${tGlobal.toFixed(1)}`;
                 updateParticles(tGlobal);
+                updateLight(tGlobal);
             });
 
             selectSpeed.addEventListener('change', (e) => {
@@ -1100,8 +1437,66 @@ def generate_3d_map():
                 document.getElementById('slider-time').value = tGlobal;
                 document.getElementById('label-time').innerText = `Paso: ${tGlobal.toFixed(1)}`;
                 updateParticles(tGlobal);
+                updateLight(tGlobal);
             }
             requestAnimationFrame(animationLoop);
+        }
+
+        function formatTime(t_val) {
+            let total_hours = 6.0 + (t_val / 15.0) * 24.0;
+            if (total_hours >= 24.0) total_hours -= 24.0;
+            
+            let hrs = Math.floor(total_hours);
+            let mins = Math.floor((total_hours - hrs) * 60);
+            
+            let ampm = hrs >= 12 ? 'PM' : 'AM';
+            let display_hrs = hrs % 12;
+            if (display_hrs === 0) display_hrs = 12;
+            
+            let display_mins = mins < 10 ? '0' + mins : mins;
+            let display_hrs_str = display_hrs < 10 ? '0' + display_hrs : display_hrs;
+            
+            return `${display_hrs_str}:${display_mins} ${ampm}`;
+        }
+
+        function updateLight(t_val) {
+            let total_hours = 6.0 + (t_val / 15.0) * 24.0;
+            if (total_hours >= 24.0) total_hours -= 24.0;
+            
+            let pct = total_hours / 24.0;
+            // El sol gira 360 grados azimutales en 24 horas
+            let azimuth = pct * 360.0;
+            
+            let polar = 85.0; // Casi rasante en la noche
+            let intensity = 0.15;
+            let color = '#0f172a'; // noche azul muy profunda
+            
+            if (total_hours >= 6.0 && total_hours <= 18.0) {
+                let t_day = (total_hours - 6.0) / 12.0; // 0.0 a 1.0
+                let elevation = Math.sin(Math.PI * t_day) * 75.0; // Max 75 grados de altura
+                polar = 90.0 - elevation;
+                intensity = 0.15 + 0.9 * Math.sin(Math.PI * t_day);
+                
+                // Cambiar color solar
+                if (total_hours < 7.5) {
+                    color = '#fdba74'; // Amanecer (Naranja suave)
+                } else if (total_hours > 16.5) {
+                    color = '#f97316'; // Atardecer (Naranja intenso solar)
+                } else {
+                    color = '#ffffff'; // Día (Blanco brillante)
+                }
+            }
+            
+            if (map.style) {
+                map.setLight({
+                    anchor: 'viewport',
+                    color: color,
+                    intensity: intensity,
+                    position: [1.5, azimuth, polar]
+                });
+            }
+            
+            document.getElementById('label-clock').innerText = formatTime(t_val);
         }
 
         function interpolatePosition(points, age) {
@@ -1245,6 +1640,7 @@ def generate_3d_map():
                         extraData = `
                             <span style="color:#10b981; font-size:11.5px;"><b>PM2.5 Medido (u): ${p.pm25.toFixed(1)} ug/m³</b></span><br>
                             <span style="color:#c084fc; font-size:11px;"><b>Emisión Local S: ${p.s.toFixed(6)} ug/(m³*s)</b></span><br>
+                            <span style="color:#818cf8; font-size:10px;"><b>*Haz clic sobre la estación para ver la ficha de contribuciones de focos en la barra lateral.</b></span><br>
                         `;
                     }
 
@@ -1269,9 +1665,16 @@ def generate_3d_map():
                 el.style.display = 'none';
             };
 
-            // Eventos Receptores
+            // Eventos Receptores (Hover y clic)
             map.on('mousemove', 'stations-layer', (e) => handleMouse(e, 'Receptor SIATA', false));
             map.on('mouseleave', 'stations-layer', hideMouse);
+            
+            map.on('click', 'stations-layer', (e) => {
+                if (e.features.length > 0) {
+                    const p = e.features[0].properties;
+                    calculateContribution(p.longitud, p.latitud, p.name);
+                }
+            });
 
             // Eventos Fuentes Urbanas
             map.on('mousemove', 'urban-sources-layer', (e) => handleMouse(e, 'Foco Urbano', true));
@@ -1362,6 +1765,7 @@ def generate_3d_map():
                   .replace("{urban_trajectories_geojson_placeholder}", urban_trajectories_geojson)
                   .replace("{industrial_trajectories_geojson_placeholder}", industrial_trajectories_geojson)
                   .replace("{wind_geojson_placeholder}", wind_geojson)
+                  .replace("{inversion_geojson_placeholder}", inversion_geojson)
                   .replace("{trajectories_data_placeholder}", trajectories_data_json)
                   .replace("{epochs_list_placeholder}", json.dumps(epochs_list))
                   .replace("{total_loss_placeholder}", json.dumps(total_loss_list))
