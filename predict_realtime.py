@@ -11,7 +11,7 @@ from src.data.siata_scraper import SiataOfficialNetwork
 
 def run_realtime_pipeline():
     print("======================================================================")
-    print("INICIANDO INGESTA Y INFERENCIA EN TIEMPO REAL (ULTIMAS 48 HORAS)")
+    print("INICIANDO INGESTA Y INFERENCIA EN TIEMPO REAL (ULTIMAS 96 HORAS)")
     print("======================================================================")
 
     # 1. Ejecutar el Scraper para obtener datos actualizados
@@ -48,17 +48,17 @@ def run_realtime_pipeline():
         time_max = df_raw["timestamp"].max()
         time_range = time_max - time_min
         
-        # El corte es 48 horas antes de la última medición disponible
-        cutoff_timestamp = time_max - (48 * 3600)
+        # El corte es 96 horas antes de la última medición disponible
+        cutoff_timestamp = time_max - (96 * 3600)
         
-        # Filtrar registros crudos de las últimas 48 horas
+        # Filtrar registros crudos de las últimas 96 horas
         df_raw_latest = df_raw[df_raw["timestamp"] >= cutoff_timestamp].copy()
         print(f"Ultima medicion disponible en SIATA: {pd.to_datetime(time_max, unit='s')}")
-        print(f"Corte de 48 horas antes: {pd.to_datetime(cutoff_timestamp, unit='s')}")
+        print(f"Corte de 96 horas antes: {pd.to_datetime(cutoff_timestamp, unit='s')}")
         print(f"Encontrados {len(df_raw_latest)} registros crudos en este rango.")
 
         if df_raw_latest.empty:
-            print("[WARN] No hay registros en las últimas 48 horas. Usando los últimos 10 registros como fallback.")
+            print("[WARN] No hay registros en las últimas 96 horas. Usando los últimos 10 registros como fallback.")
             df_raw_latest = df_raw.sort_values(by="timestamp", ascending=False).head(10)
 
         # Cargar datos preprocesados para obtener la elevación real por ID de estación

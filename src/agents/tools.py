@@ -236,12 +236,12 @@ class ClusteringInput(BaseModel):
 
 class SpatiotemporalClusteringTool(BaseTool):
     name: str = "Spatiotemporal GMM Clustering Tool"
-    description: str = "Aplica Gaussian Mixture Models (GMM) a las predicciones de PM2.5 y emisión (S) de las últimas 48 horas para identificar distintas nubes de contaminación."
+    description: str = "Aplica Gaussian Mixture Models (GMM) a las predicciones de PM2.5 y emisión (S) de las últimas 96 horas para identificar distintas nubes de contaminación."
     args_schema: Type[BaseModel] = ClusteringInput
     
     def _run(self, num_components: int) -> str:
         if not os.path.exists("output_predictions.json"):
-            return "Error: No se encontró el archivo de predicciones 'output_predictions.json'. Por favor ejecuta primero predict_realtime.py para generar las predicciones de las últimas 48 horas."
+            return "Error: No se encontró el archivo de predicciones 'output_predictions.json'. Por favor ejecuta primero predict_realtime.py para generar las predicciones de las últimas 96 horas."
             
         try:
             with open("output_predictions.json", "r", encoding="utf-8") as f:
@@ -278,7 +278,7 @@ class SpatiotemporalClusteringTool(BaseTool):
             
             df_filtered['cluster'] = gmm.predict(X)
             
-            report = f"Clustering Espaciotemporal Completado con GMM ({num_components} componentes) usando las predicciones de las últimas 48 horas.\n\n"
+            report = f"Clustering Espaciotemporal Completado con GMM ({num_components} componentes) usando las predicciones de las últimas 96 horas.\n\n"
             for i in range(num_components):
                 cluster_data = df_filtered[df_filtered['cluster'] == i]
                 mean_pm25 = cluster_data['pm25'].mean()
@@ -364,7 +364,7 @@ class WriteLatexForensicReportTool(BaseTool):
 # --- New Tool for Physical Audit (verify_physics.jl) ---
 class AuditPhysicsTool(BaseTool):
     name: str = "Audit Physics Tool"
-    description: str = "Ejecuta el script de auditoría física verify_physics.jl en Julia para calcular el PVI (Physics Violation Index) y la divergencia máxima del viento sobre las predicciones de las últimas 48 horas."
+    description: str = "Ejecuta el script de auditoría física verify_physics.jl en Julia para calcular el PVI (Physics Violation Index) y la divergencia máxima del viento sobre las predicciones de las últimas 96 horas."
 
     def _run(self) -> str:
         try:
