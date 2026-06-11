@@ -4,6 +4,18 @@ include("src/pinn/AdvectionDiffusion.jl")
 using .AdvectionDiffusion
 using NeuralPDE, ModelingToolkit, JLD2, ComponentArrays, Lux, JSON
 
+struct GridPoint
+    lon::Float64
+    lat::Float64
+    elev::Float64
+    S::Float64
+    vx::Float64
+    vy::Float64
+    x::Float64
+    y::Float64
+    z::Float64
+end
+
 function run_prediction(input_path::String="input_points.json", output_path::String="output_predictions.json", model_path::String="modelo_pinn.jld2")
     println("==== Predictor Standalone de la iPINN ====")
     
@@ -152,6 +164,116 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         JSON.print(f, output_data, 4)
     end
     println("✅ ¡Predicciones guardadas exitosamente en '$output_path'!")
+
+    # ==========================================================================
+    # NUEVO: BÚSQUEDA EN GRILLA DE FUENTES DE EMISIÓN REALES (LOCALIZACIÓN INVERSA)
+    # ==========================================================================
+    println("\n🔎 Buscando focos de emisión (fuentes) en todo el valle...")
+    grid_lon = range(lon_min + 0.03, lon_max - 0.03, length=35)
+    grid_lat = range(lat_min + 0.03, lat_max - 0.03, length=35)
+    N_grid = length(grid_lon) * length(grid_lat)
+    
+    grid_pts = Matrix{Float64}(undef, 4, N_grid)
+    idx = 1
+    for lon in grid_lon, lat in grid_lat
+        x_scaled = 2.0 * (lon - lon_min) / (lon_max - lon_min) - 1.0
+        y_scaled = 2.0 * (lat - lat_min) / (lat_max - lat_min) - 1.0
+        z_scaled = 0.05 # Fondo del valle (adimensional z=0.05)
+        t_scaled = 1.0  # Último timestamp
+        
+        grid_pts[1, idx] = x_scaled
+        grid_pts[2, idx] = y_scaled
+        grid_pts[3, idx] = z_scaled
+        grid_pts[4, idx] = t_scaled
+        idx += 1
+    end
+    
+    # Evaluar red de emisión S en la grilla
+    S_grid = phi[7](grid_pts, theta.depvar.S)
+    emision_grid = S_grid * (100.0 / 3600.0) # des-escalar a ug/m3/s
+    
+    # Evaluar vientos de la grilla para tener los vectores en los focos
+    vx_grid = phi[3](grid_pts, theta.depvar.vx) * 10.0
+    vy_grid = phi[4](grid_pts, theta.depvar.vy) * 10.0
+    
+    # Estructurar puntos
+    
+    all_points = GridPoint[]
+    idx = 1
+    for lon in grid_lon, lat in grid_lat
+        # Estimar elevación simplificada
+        elev_val = elev_min + 0.05 * (elev_max - elev_min) # ~1480 msnm
+        push!(all_points, GridPoint(lon, lat, elev_val, emision_grid[idx], vx_grid[idx], vy_grid[idx], grid_pts[1, idx], grid_pts[2, idx], grid_pts[3, idx]))
+        idx += 1
+    end
+    
+    # Ordenar por emisión S descendente
+    sort!(all_points, by = p -> p.S, rev=true)
+    
+    # NMS (Non-maximum suppression) para seleccionar focos de emisión espacialmente separados
+    hotspots = GridPoint[]
+    min_dist_deg = 0.035 # Aprox 3.8 km de distancia mínima para asegurar que sean distintas comunas
+    for gp in all_points
+        too_close = false
+        for hs in hotspots
+            dist = sqrt((gp.lon - hs.lon)^2 + (gp.lat - hs.lat)^2)
+            if dist < min_dist_deg
+                too_close = true
+                break
+            end
+        end
+        if !too_close
+            push!(hotspots, gp)
+        end
+        if length(hotspots) >= 8 # Seleccionar los 8 focos principales del valle
+            break
+        end
+    end
+    
+    # Trazar trayectorias físicas de dispersión saliendo de las fuentes encontradas
+    hotspots_data = Dict{String, Any}[]
+    for (h_idx, hs) in enumerate(hotspots)
+        x = hs.x
+        y = hs.y
+        z = hs.z
+        t = 1.0
+        
+        path = Vector{Float64}[]
+        push!(path, [hs.lon, hs.lat, hs.elev])
+        
+        for step in 1:15
+            pt = reshape([x, y, z, t], 4, 1)
+            vx_val = phi[3](pt, theta.depvar.vx)[1]
+            vy_val = phi[4](pt, theta.depvar.vy)[1]
+            vz_val = phi[5](pt, theta.depvar.vz)[1]
+            
+            x = clamp(x + vx_val * dt_scaled, -1.0, 1.0)
+            y = clamp(y + vy_val * dt_scaled, -1.0, 1.0)
+            z = clamp(z + vz_val * dt_scaled, 0.0, 1.0)
+            
+            lon = lon_min + (x + 1.0)/2.0 * (lon_max - lon_min)
+            lat = lat_min + (y + 1.0)/2.0 * (lat_max - lat_min)
+            elev = elev_min + z * (elev_max - elev_min)
+            push!(path, [lon, lat, elev])
+        end
+        
+        push!(hotspots_data, Dict(
+            "id" => h_idx,
+            "longitud" => hs.lon,
+            "latitud" => hs.lat,
+            "elevacion" => hs.elev,
+            "emision_S_ug_m3_s" => round(hs.S, digits=6),
+            "vx" => round(hs.vx, digits=3),
+            "vy" => round(hs.vy, digits=3),
+            "trajectory" => path
+        ))
+    end
+    
+    sources_path = "output_sources.json"
+    open(sources_path, "w") do f
+        JSON.print(f, hotspots_data, 4)
+    end
+    println("✅ ¡Fuentes de emisión inferidas guardadas exitosamente en '$sources_path'!")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

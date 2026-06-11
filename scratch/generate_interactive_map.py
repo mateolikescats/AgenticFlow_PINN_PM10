@@ -44,26 +44,33 @@ def get_color_for_pm25(val):
 
 def generate_3d_map():
     predictions_path = "output_predictions.json"
+    sources_path = "output_sources.json"
+    
     if not os.path.exists(predictions_path):
         print("[ERROR] No se encontró output_predictions.json. Ejecuta primero predict_realtime.py.")
+        return
+    if not os.path.exists(sources_path):
+        print("[ERROR] No se encontró output_sources.json. Ejecuta primero predict.jl.")
         return
 
     with open(predictions_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-
     df = pd.DataFrame(data)
+
+    with open(sources_path, "r", encoding="utf-8") as f:
+        sources_data = json.load(f)
 
     # Coordenadas geográficas y físicas de límites del Valle
     lat_min, lat_max = 6.0, 6.45
     lon_min, lon_max = -75.7, -75.3
 
-    # 1. Generar Stations GeoJSON
+    # 1. Generar Receptores GeoJSON (Estaciones SIATA reales, bajas en el suelo)
     stations_features = []
     for idx, r in df.iterrows():
         pm25 = r["pred_pm25_ug_m3"]
         color = get_color_for_pm25(pm25)
-        # Escalar la altura del cilindro en metros para que luzca estético (PM2.5 * 80 metros)
-        height = pm25 * 80.0
+        # Receptores representados como cilindros muy chatos en el suelo (altura fija de 25m para simular sensores)
+        height = 25.0
         
         stations_features.append({
             "type": "Feature",
@@ -90,42 +97,66 @@ def generate_3d_map():
         "features": stations_features
     })
 
-    # 2. Generar Trajectories GeoJSON (Usando trayectorias físicas de Julia)
+    # 2. Generar Fuentes Inferidas GeoJSON (Focos de emisión altos e intensos)
+    sources_features = []
+    for idx, s in enumerate(sources_data):
+        emision = s["emision_S_ug_m3_s"]
+        
+        # Mapear emisión a escala de colores: de amarillo a rojo brillante
+        # S suele estar entre 0.0001 y 0.0005
+        ratio = min(max((emision - 0.0001) / 0.0003, 0.0), 1.0)
+        r_col = int(239 * ratio + 250 * (1 - ratio))
+        g_col = int(68 * ratio + 204 * (1 - ratio))
+        b_col = int(68 * ratio + 21 * (1 - ratio))
+        color = f"rgb({r_col},{g_col},{b_col})"
+        
+        # Altura del cilindro proporcional a la emisión (e.g., S * 2,500,000 metros)
+        height = emision * 2500000.0 # si emision = 0.0004 -> altura = 1000m
+        
+        sources_features.append({
+            "type": "Feature",
+            "properties": {
+                "id": int(s["id"]),
+                "latitud": float(s["latitud"]),
+                "longitud": float(s["longitud"]),
+                "emision": float(emision),
+                "vx": float(s["vx"]),
+                "vy": float(s["vy"]),
+                "elev": float(s["elevacion"]),
+                "color": color,
+                "height": height
+            },
+            "geometry": {
+                "type": "Point",
+                "coordinates": [float(s["longitud"]), float(s["latitud"])]
+            }
+        })
+    sources_geojson = json.dumps({
+        "type": "FeatureCollection",
+        "features": sources_features
+    })
+
+    # 3. Generar Trajectories GeoJSON (Saliendo de las FUENTES, no de los receptores)
     trajectory_features = []
-    trajectories_data = [] # Para la animación de partículas en JS
+    trajectories_data = [] # Para animación de partículas en JS
     
-    for idx, r in df.iterrows():
-        st_id = int(r.get("id", idx))
-        pm25 = float(r["pred_pm25_ug_m3"])
+    for idx, s in enumerate(sources_data):
+        st_id = int(s["id"])
+        emision = float(s["emision_S_ug_m3_s"])
+        points = s["trajectory"]
         
-        # Obtener trayectoria física calculada por la PINN
-        points_3d = r.get("trajectory", None)
-        if points_3d is not None and isinstance(points_3d, list) and len(points_3d) > 0:
-            points = points_3d
-        else:
-            # Fallback en caso de que no exista trayectoria (usar viento constante interpolado)
-            dt = 0.011
-            curr_lon = r['longitud']
-            curr_lat = r['latitud']
-            points = [[curr_lon, curr_lat, float(r["elevacion"])]]
-            for step in range(15):
-                vx, vy, vz = interpolate_wind(curr_lon, curr_lat, df)
-                curr_lon += vx * dt
-                curr_lat += vy * dt
-                curr_lon = np.clip(curr_lon, lon_min, lon_max)
-                curr_lat = np.clip(curr_lat, lat_min, lat_max)
-                points.append([curr_lon, curr_lat, get_terrain_height(curr_lon, curr_lat)])
-        
-        # Guardar trayectoria 3D para la animación JS
+        # Guardar trayectoria para partículas en JS
+        # Escalamos el valor de 'pm25' artificialmente de la emisión para que las fórmulas de radio funcionen igual
+        pm25_eq = emision * 45000.0 # si emision = 0.0004 -> pm25_eq = 18.0
         trajectories_data.append({
             "station_id": st_id,
-            "pm25": pm25,
-            "vx": float(r["pred_viento_vx_m_s"]),
-            "vy": float(r["pred_viento_vy_m_s"]),
+            "pm25": pm25_eq,
+            "vx": float(s["vx"]),
+            "vy": float(s["vy"]),
             "points": points
         })
         
-        # Generar segmentos de línea 2D para las estelas estáticas
+        # Generar segmentos de línea 2D
         for step in range(len(points) - 1):
             p1 = [points[step][0], points[step][1]]
             p2 = [points[step + 1][0], points[step + 1][1]]
@@ -136,7 +167,6 @@ def generate_3d_map():
             b_val = int(68 + (21 - 68) * ratio)
             color = f"rgb({r_val},{g_val},{b_val})"
             
-            # Ancho y opacidad disminuyen progresivamente
             width = 6.0 * (1.0 - 0.7 * ratio)
             opacity = 0.85 * (1.0 - 0.5 * ratio)
             
@@ -160,7 +190,7 @@ def generate_3d_map():
     })
     trajectories_data_json = json.dumps(trajectories_data)
 
-    # 3. Generar Wind Vectors GeoJSON (Líneas direccionales celestes drapeadas)
+    # 4. Generar Wind Vectors GeoJSON (Líneas direccionales celestes drapeadas)
     wind_features = []
     scale = 0.0028
     for idx, r in df.iterrows():
@@ -191,7 +221,7 @@ def generate_3d_map():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iPINN 3D - Visualizador de Calidad del Aire y Vientos</title>
+    <title>iPINN 3D - Visualizador de Calidad del Aire y Fuentes de Emisión</title>
     <!-- Maplibre GL JS -->
     <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
     <link href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css" rel="stylesheet" />
@@ -428,9 +458,17 @@ def generate_3d_map():
             background: linear-gradient(135deg, #10b981, #ef4444);
             border: 1.5px solid white;
             box-shadow: 0 0 5px rgba(239, 68, 68, 0.4);
+            border-radius: 50%;
+            width: 14px;
+            height: 14px;
+        }
+        .icon-source {
+            background: linear-gradient(135deg, #facc15, #ef4444);
+            border: 1.5px solid white;
+            box-shadow: 0 0 5px rgba(239, 68, 68, 0.6);
             border-radius: 2px;
             width: 12px;
-            height: 16px;
+            height: 18px;
         }
         .icon-wind {
             background: #38bdf8;
@@ -529,15 +567,15 @@ def generate_3d_map():
     <div class="dashboard">
         <div class="sidebar">
             <div>
-                <span class="badge">iPINN Satellite 3D</span>
-                <h1>iPINN 3D: Valle de Aburrá</h1>
-                <div class="subtitle">Simulación 3D Georreferenciada sobre Relieve Satelital</div>
+                <span class="badge">iPINN Source Localization 3D</span>
+                <h1>iPINN 3D: Localización de Fuentes</h1>
+                <div class="subtitle">Identificación Inversa de Focos de Contaminación en el Relieve</div>
             </div>
 
             <div>
                 <h2>¿Qué es esta simulación?</h2>
                 <p class="description">
-                    Este mapa interactivo simula en 3D real el comportamiento de vientos y partículas contaminantes (<b>PM2.5</b>) integrando la física del modelo <b>iPINN</b> con datos reales de la red SIATA sobre la topografía satelital del Valle de Aburrá.
+                    Este mapa interactivo simula cómo la red neuronal <b>iPINN</b> resuelve el problema inverso de la física para <b>localizar las fuentes de emisión reales</b> (hotspots) que causan la contaminación medida en los sensores satélite del SIATA.
                 </p>
             </div>
 
@@ -571,12 +609,17 @@ def generate_3d_map():
                     <label class="toggle-label">
                         <input type="checkbox" id="toggle-stations" checked onchange="toggleLayer('stations-layer', this.checked)">
                         <span class="toggle-custom"></span>
-                        Estaciones 3D (Cilindros)
+                        Receptores SIATA (Sensores)
+                    </label>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="toggle-sources" checked onchange="toggleLayer('sources-layer', this.checked)">
+                        <span class="toggle-custom"></span>
+                        Fuentes Inferidas iPINN (Emisión S)
                     </label>
                     <label class="toggle-label">
                         <input type="checkbox" id="toggle-trails" checked onchange="toggleLayer('trajectories-layer', this.checked)">
                         <span class="toggle-custom"></span>
-                        Estelas de Dispersión (Estáticas)
+                        Estelas de Dispersión (Desde Fuentes)
                     </label>
                     <label class="toggle-label">
                         <input type="checkbox" id="toggle-particles" checked onchange="toggleLayer('particles-layer', this.checked)">
@@ -603,13 +646,19 @@ def generate_3d_map():
                     <div class="legend-item">
                         <div class="legend-icon icon-station"></div>
                         <div>
-                            <b>Estaciones 3D (Cilindros):</b> El <b>diámetro</b> y la <b>altura</b> indican el PM2.5 predicho. El color varía de verde (limpio) a rojo (contaminado). Se asientan directamente en el relieve.
+                            <b>Receptores SIATA (Sensores):</b> Discos planos en el suelo que representan la concentración de $PM2.5$ medida por los sensores físicos oficiales del SIATA.
+                        </div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-icon icon-source"></div>
+                        <div>
+                            <b>Fuentes Inferidas iPINN (Cilindros):</b> Focos de emisión localizados por la PINN resolviendo el problema físico inverso. Su <b>altura</b> indica la tasa de emisión $S$ calculada.
                         </div>
                     </div>
                     <div class="legend-item">
                         <div class="legend-icon icon-trail"></div>
                         <div>
-                            <b>Estelas de Dispersión:</b> Líneas que muestran las trayectorias de advección físicas no-lineales calculadas directamente por la PINN.
+                            <b>Estelas de Dispersión:</b> Líneas que muestran las trayectorias de advección físicas no-lineales saliendo de las fuentes encontradas.
                         </div>
                     </div>
                     <div class="legend-item">
@@ -639,8 +688,8 @@ def generate_3d_map():
                         <div class="metric-label">Ventana Temporal</div>
                     </div>
                     <div class="metric-card">
-                        <div class="metric-value">18</div>
-                        <div class="metric-label">Estaciones Activas</div>
+                        <div class="metric-value">8 Focos</div>
+                        <div class="metric-label">Fuentes Detectadas</div>
                     </div>
                     <div class="metric-card">
                         <div class="metric-value">Inversa S</div>
@@ -668,6 +717,7 @@ def generate_3d_map():
     <script type="text/javascript">
         // Datos inyectados desde Python
         const stationsGeoJSON = {stations_geojson_placeholder};
+        const sourcesGeoJSON = {sources_geojson_placeholder};
         const trajectoriesGeoJSON = {trajectories_geojson_placeholder};
         const windGeoJSON = {wind_geojson_placeholder};
         const trajectoriesData = {trajectories_data_placeholder};
@@ -686,7 +736,7 @@ def generate_3d_map():
             return [coordinates];
         }
 
-        // Convertir los puntos de estaciones a hexágonos en el navegador para que hereden el relieve automáticamente
+        // Convertir los puntos de estaciones a hexágonos chatos (receptores) en el navegador
         stationsGeoJSON.features = stationsGeoJSON.features.map(f => {
             const coords = f.geometry.coordinates;
             return {
@@ -694,7 +744,20 @@ def generate_3d_map():
                 properties: f.properties,
                 geometry: {
                     type: 'Polygon',
-                    coordinates: createHexagon(coords, 180) // 180 metros de radio
+                    coordinates: createHexagon(coords, 100) // 100 metros de radio para sensores
+                }
+            };
+        });
+
+        // Convertir los puntos de fuentes a hexágonos amplios (fuentes de emisión)
+        sourcesGeoJSON.features = sourcesGeoJSON.features.map(f => {
+            const coords = f.geometry.coordinates;
+            return {
+                type: 'Feature',
+                properties: f.properties,
+                geometry: {
+                    type: 'Polygon',
+                    coordinates: createHexagon(coords, 220) // 220 metros de radio para focos de emisión
                 }
             };
         });
@@ -812,7 +875,7 @@ def generate_3d_map():
                 }
             });
 
-            // 5. Capa de Estaciones 3D usando fill-extrusion nativo (se asienta automáticamente en el relieve)
+            // 5. Capa de Receptores SIATA (Cilindros chatos en el relieve)
             map.addSource('stations-source', {
                 type: 'geojson',
                 data: stationsGeoJSON
@@ -825,7 +888,25 @@ def generate_3d_map():
                 paint: {
                     'fill-extrusion-color': ['get', 'color'],
                     'fill-extrusion-height': ['get', 'height'],
-                    'fill-extrusion-base': 0, // Inicia desde el nivel del suelo del relieve
+                    'fill-extrusion-base': 0, 
+                    'fill-extrusion-opacity': 0.8
+                }
+            });
+
+            // 6. Capa de Fuentes Inferidas iPINN (Cilindros altos de emisión)
+            map.addSource('sources-source', {
+                type: 'geojson',
+                data: sourcesGeoJSON
+            });
+
+            map.addLayer({
+                id: 'sources-layer',
+                type: 'fill-extrusion',
+                source: 'sources-source',
+                paint: {
+                    'fill-extrusion-color': ['get', 'color'],
+                    'fill-extrusion-height': ['get', 'height'],
+                    'fill-extrusion-base': 0, 
                     'fill-extrusion-opacity': 0.85
                 }
             });
@@ -833,7 +914,7 @@ def generate_3d_map():
             // --- Inicializar simulación temporal y bucle de animación ---
             initAnimation();
 
-            // --- Controladores de eventos para hover en las estaciones ---
+            // --- Controladores de eventos para hover en los receptores ---
             map.on('mousemove', 'stations-layer', (e) => {
                 map.getCanvas().style.cursor = 'pointer';
                 if (e.features.length > 0) {
@@ -843,13 +924,12 @@ def generate_3d_map():
                     const el = document.getElementById('tooltip');
                     el.innerHTML = `
                         <div style="font-family: 'Inter', sans-serif; font-size: 11px; color: #fff; line-height:1.4;">
-                            <b style="font-size:12px; color:#38bdf8;">Estación SIATA ID: ${p.name || p.id}</b><br>
+                            <b style="font-size:12px; color:#10b981;">Receptor (Sensor SIATA ID: ${p.name || p.id})</b><br>
                             <b>Coordenadas:</b> ${p.latitud.toFixed(4)}°, ${p.longitud.toFixed(4)}°<br>
                             <b>Altitud Terreno:</b> ${p.elev.toFixed(0)} msnm<br>
                             <hr style="border:0; border-top:1px solid rgba(255,255,255,0.15); margin:6px 0;">
-                            <span style="color:#ff5a5f; font-size:11.5px;"><b>PM2.5 Predicho: ${p.pm25.toFixed(2)} ug/m³</b></span><br>
-                            <b>Viento:</b> [${p.vx.toFixed(2)}, ${p.vy.toFixed(2)}, ${p.vz.toFixed(2)}] m/s<br>
-                            <span style="color:#38bdf8;"><b>Emisión Inversa (S): ${p.s.toFixed(6)} ug/(m³*s)</b></span>
+                            <span style="color:#ff5a5f; font-size:11.5px;"><b>PM2.5 Medido: ${p.pm25.toFixed(2)} ug/m³</b></span><br>
+                            <b>Viento local:</b> [${p.vx.toFixed(2)}, ${p.vy.toFixed(2)}] m/s
                         </div>
                     `;
                     el.style.display = 'block';
@@ -859,6 +939,35 @@ def generate_3d_map():
             });
 
             map.on('mouseleave', 'stations-layer', () => {
+                map.getCanvas().style.cursor = '';
+                document.getElementById('tooltip').style.display = 'none';
+            });
+
+            // --- Controladores de eventos para hover en las fuentes inferidas ---
+            map.on('mousemove', 'sources-layer', (e) => {
+                map.getCanvas().style.cursor = 'pointer';
+                if (e.features.length > 0) {
+                    const feature = e.features[0];
+                    const p = feature.properties;
+                    
+                    const el = document.getElementById('tooltip');
+                    el.innerHTML = `
+                        <div style="font-family: 'Inter', sans-serif; font-size: 11px; color: #fff; line-height:1.4;">
+                            <b style="font-size:12px; color:#facc15;">Foco de Emisión Inferido #${p.id} (iPINN)</b><br>
+                            <b>Coordenadas:</b> ${p.latitud.toFixed(4)}°, ${p.longitud.toFixed(4)}°<br>
+                            <b>Altitud Terreno:</b> ${p.elev.toFixed(0)} msnm<br>
+                            <hr style="border:0; border-top:1px solid rgba(255,255,255,0.15); margin:6px 0;">
+                            <span style="color:#38bdf8; font-size:11.5px;"><b>Tasa de Emisión (S): ${p.emision.toFixed(6)} ug/(m³*s)</b></span><br>
+                            <b>Viento en el Foco:</b> [${p.vx.toFixed(2)}, ${p.vy.toFixed(2)}] m/s
+                        </div>
+                    `;
+                    el.style.display = 'block';
+                    el.style.left = e.point.x + 15 + 'px';
+                    el.style.top = e.point.y + 15 + 'px';
+                }
+            });
+
+            map.on('mouseleave', 'sources-layer', () => {
                 map.getCanvas().style.cursor = '';
                 document.getElementById('tooltip').style.display = 'none';
             });
@@ -957,7 +1066,7 @@ def generate_3d_map():
                         const pos = interpolatePosition(points, age);
                         const ageRatio = age / 15.0;
 
-                        // Escalar la intensidad de PM2.5 (del 0 al 1 entre 7 y 20 ug/m3)
+                        // Escalar la intensidad de PM2.5 (del 0 al 1 entre 7 y 20 ug/m3 equivalente de la emisión)
                         const pm25Ratio = Math.min(Math.max((pm25 - 7.0) / 13.0, 0.0), 1.0);
 
                         for (let j = 0; j < numStreams; j++) {
@@ -1032,6 +1141,7 @@ def generate_3d_map():
     # Realizar el reemplazo de las variables inyectadas de Python en JS
     final_html = (dashboard_template
                   .replace("{stations_geojson_placeholder}", stations_geojson)
+                  .replace("{sources_geojson_placeholder}", sources_geojson)
                   .replace("{trajectories_geojson_placeholder}", trajectories_geojson)
                   .replace("{wind_geojson_placeholder}", wind_geojson)
                   .replace("{trajectories_data_placeholder}", trajectories_data_json))
@@ -1040,7 +1150,7 @@ def generate_3d_map():
     os.makedirs(os.path.dirname(output_html), exist_ok=True)
     with open(output_html, "w", encoding="utf-8") as f:
         f.write(final_html)
-    print(f"[SUCCESS] Mapa 3D satelital interactivo premium generado en: {output_html}")
+    print(f"[SUCCESS] Mapa 3D satelital interactivo premium de localización de fuentes generado en: {output_html}")
 
 if __name__ == "__main__":
     generate_3d_map()
