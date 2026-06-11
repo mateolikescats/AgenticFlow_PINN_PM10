@@ -804,7 +804,7 @@ def generate_3d_map():
             <!-- MEJORA 2: Tarjeta de Sonda Interactiva en Sidebar -->
             <div id="probe-card" class="interactive-card">
                 <div class="interactive-title">
-                    <span>📡 Sonda de Viento Activa</span>
+                    <span id="probe-card-title">📡 Sonda de Viento Activa</span>
                     <button class="btn-clear" onclick="clearProbe()">Eliminar</button>
                 </div>
                 <div class="interactive-row">
@@ -815,8 +815,10 @@ def generate_3d_map():
                     <span>Vector Viento [vx, vy]:</span>
                     <span id="probe-wind" style="font-weight:600; color:#38bdf8;">-</span>
                 </div>
-                <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
-                    *Muestra la trayectoria tridimensional que una partícula liberada en ese punto seguiría de acuerdo con la física del viento resuelta por la iPINN.
+                <!-- Contenedor para detalles de la sonda científica -->
+                <div id="probe-details-container"></div>
+                <div style="font-size:9px; color:#64748b; margin-top:4px; line-height:1.2; border-top: 1px solid rgba(255,255,255,0.08); padding-top:4px;">
+                    *Muestra la advección física resuelta por la iPINN. Las partículas sobre la línea cambian de color y tamaño en tiempo real según el nivel local de PM2.5.
                 </div>
             </div>
 
@@ -1461,6 +1463,28 @@ def generate_3d_map():
             return [sum_vx / sum_weights, sum_vy / sum_weights];
         }
 
+        function interpolatePM25JS(lon, lat) {
+            let lons = stationsGeoJSON.features.map(f => f.properties.longitud);
+            let lats = stationsGeoJSON.features.map(f => f.properties.latitud);
+            let pms = stationsGeoJSON.features.map(f => f.properties.pm25);
+            
+            let sum_weights = 0;
+            let sum_pm = 0;
+            
+            for (let i = 0; i < lons.length; i++) {
+                let dist = Math.sqrt((lons[i] - lon)**2 + (lats[i] - lat)**2);
+                if (dist < 1e-5) {
+                    return pms[i];
+                }
+                let w = 1.0 / (dist * dist + 0.0004); // Evitar división por cero
+                sum_weights += w;
+                sum_pm += pms[i] * w;
+            }
+            
+            if (sum_weights === 0) return 12.0; // Default
+            return sum_pm / sum_weights;
+        }
+
         function setupInteractiveProbe() {
             map.on('click', (e) => {
                 // Evitar clics sobre estaciones para no solapar con la ficha de contribución
@@ -1483,16 +1507,52 @@ def generate_3d_map():
             
             // Factor dt para simular la advección geográfica
             const dt = 0.0015;
+            
+            // Determinar dirección de advección según el modo de análisis activo
+            const isBackward = (activeAnalysisMode === 'de-donde-viene');
+            const sign = isBackward ? -1.0 : 1.0;
+            
+            // Datos a lo largo de la trayectoria para el reporte de sonda
+            let pathPM25s = [];
+            let pathSpeeds = [];
+            
+            let pm_init = interpolatePM25JS(lon, lat);
+            let [vx_init, vy_init] = interpolateWindJS(lon, lat);
+            let speed_init = Math.sqrt(vx_init*vx_init + vy_init*vy_init);
+            
+            pathPM25s.push(pm_init);
+            pathSpeeds.push(speed_init);
+
             for (let step = 0; step < 20; step++) {
                 const [vx, vy] = interpolateWindJS(cur_lon, cur_lat);
-                cur_lon += vx * dt;
-                cur_lat += vy * dt;
+                cur_lon += sign * vx * dt;
+                cur_lat += sign * vy * dt;
                 
                 // Confinar al cuadro
                 cur_lon = Math.min(Math.max(cur_lon, -75.7), -75.3);
                 cur_lat = Math.min(Math.max(cur_lat, 6.0), 6.45);
                 
                 points.push([cur_lon, cur_lat]);
+                
+                // Muestrear en este punto de la ruta
+                pathPM25s.push(interpolatePM25JS(cur_lon, cur_lat));
+                pathSpeeds.push(Math.sqrt(vx*vx + vy*vy));
+            }
+
+            probePoints = points;
+
+            // Cambiar dinámicamente la apariencia de la línea en el mapa
+            if (map.getLayer('probe-layer-line')) {
+                if (isBackward) {
+                    map.setPaintProperty('probe-layer-line', 'line-color', '#22d3ee'); // Celeste / Cian
+                    map.setPaintProperty('probe-layer-line', 'line-dasharray', [2, 2]); // Línea punteada (retro)
+                } else {
+                    map.setPaintProperty('probe-layer-line', 'line-color', '#facc15'); // Amarillo
+                    map.setPaintProperty('probe-layer-line', 'line-dasharray', [10, 0]); // Línea continua
+                }
+            }
+            if (map.getLayer('probe-layer-point')) {
+                map.setPaintProperty('probe-layer-point', 'circle-color', isBackward ? '#22d3ee' : '#facc15');
             }
 
             const probeGeoJSON = {
@@ -1521,13 +1581,63 @@ def generate_3d_map():
                 map.getSource('probe-source').setData(probeGeoJSON);
             }
 
+            // Reporte analítico en sidebar
+            let minPM = Math.min(...pathPM25s);
+            let maxPM = Math.max(...pathPM25s);
+            let avgSpeed = pathSpeeds.reduce((a,b)=>a+b, 0) / pathSpeeds.length;
+            
+            let ica_init = getICA(pm_init);
+            let ica_max = getICA(maxPM);
+            let ica_min = getICA(minPM);
+
+            let diag = "";
+            let probeColor = isBackward ? '#22d3ee' : '#facc15';
+            
+            if (avgSpeed < 0.6) {
+                diag = "⚠️ <b>Estancamiento local:</b> Viento muy débil en la ruta. Alto riesgo de acumulación de contaminantes.";
+            } else if (maxPM > 37.0) {
+                diag = "⚠️ <b>Zona Crítica cruzada:</b> La trayectoria atraviesa un hotspot de contaminación elevada.";
+            } else if (avgSpeed > 1.2 && maxPM <= 12.0) {
+                diag = "✅ <b>Ventilación Activa:</b> Viento fuerte y aire limpio en todo el recorrido evaluado.";
+            } else {
+                diag = "ℹ️ <b>Dispersión Estable:</b> Vientos promedio y concentraciones moderadas a lo largo de la ruta.";
+            }
+
             // Actualizar interfaz
+            const probeTitle = document.getElementById('probe-card-title');
+            probeTitle.innerHTML = isBackward ? '🔍 Sonda Retrógrada Activa' : '🚀 Sonda de Dispersión Activa';
+            probeTitle.style.color = probeColor;
+            document.getElementById('probe-card').style.borderColor = isBackward ? 'rgba(34,211,238,0.3)' : 'rgba(250,204,21,0.3)';
+            document.getElementById('probe-card').style.background = isBackward ? 'rgba(34,211,238,0.02)' : 'rgba(250,204,21,0.02)';
+            
             document.getElementById('probe-card').style.display = 'flex';
             document.getElementById('probe-coords').innerText = `${lat.toFixed(4)}°, ${lon.toFixed(4)}°`;
-            
-            let [vx_init, vy_init] = interpolateWindJS(lon, lat);
-            document.getElementById('probe-wind').innerText = `[${vx_init.toFixed(2)}, ${vy_init.toFixed(2)}] m/s`;
-            probePoints = points;
+            document.getElementById('probe-wind').innerText = `[${vx_init.toFixed(2)}, ${vy_init.toFixed(2)}] m/s (Inic)`;
+
+            let detailsHTML = `
+                <div style="margin-top:6px; font-size:10.5px; border-top:1px solid rgba(255,255,255,0.08); padding-top:6px; display:flex; flex-direction:column; gap:4px;">
+                    <div style="display:flex; justify-content:space-between;">
+                        <span>PM2.5 en Punto:</span>
+                        <span><b>${pm_init.toFixed(1)} ug/m³</b> <span style="display:inline-block; padding:1px 4px; border-radius:2px; font-size:8px; font-weight:700; color:${ica_init.color}; background:${ica_init.bg}; border:1px solid ${ica_init.border};">${ica_init.label}</span></span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between;">
+                        <span>Viento Promedio:</span>
+                        <span><b>${avgSpeed.toFixed(2)} m/s</b></span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between;">
+                        <span>Máx PM2.5 en Ruta:</span>
+                        <span><b>${maxPM.toFixed(1)} ug/m³</b> <span style="display:inline-block; padding:1px 4px; border-radius:2px; font-size:8px; font-weight:700; color:${ica_max.color}; background:${ica_max.bg}; border:1px solid ${ica_max.border};">${ica_max.label}</span></span>
+                    </div>
+                    <div style="display:flex; justify-content:space-between;">
+                        <span>Mín PM2.5 en Ruta:</span>
+                        <span><b>${minPM.toFixed(1)} ug/m³</b> <span style="display:inline-block; padding:1px 4px; border-radius:2px; font-size:8px; font-weight:700; color:${ica_min.color}; background:${ica_min.bg}; border:1px solid ${ica_min.border};">${ica_min.label}</span></span>
+                    </div>
+                    <div style="margin-top:4px; font-size:9.5px; color:#cbd5e1; background:rgba(255,255,255,0.04); border-radius:4px; padding:5px; border-left:2.5px solid ${probeColor}; line-height:1.3;">
+                        ${diag}
+                    </div>
+                </div>
+            `;
+            document.getElementById('probe-details-container').innerHTML = detailsHTML;
         }
 
         function clearProbe() {
@@ -1535,6 +1645,7 @@ def generate_3d_map():
             if (map.getSource('probe-source')) {
                 map.getSource('probe-source').setData({ type: 'FeatureCollection', features: [] });
             }
+            document.getElementById('probe-details-container').innerHTML = '';
             document.getElementById('probe-card').style.display = 'none';
         }
 
@@ -2246,18 +2357,27 @@ def generate_3d_map():
                 }
             });
 
-            // Animar partículas fluyendo sobre la sonda de viento activa (hacia adelante)
+            // Animar partículas fluyendo sobre la sonda de viento activa (color y tamaño dinámicos según PM2.5)
             if (typeof probePoints !== 'undefined' && probePoints && probePoints.length > 0) {
-                const numProbeParticles = 6;
+                const numProbeParticles = 7;
                 const L = probePoints.length;
+                const isBackward = (activeAnalysisMode === 'de-donde-viene');
+                
                 for (let i = 0; i < numProbeParticles; i++) {
-                    const age = (t_val * 2.5 + i * (L / numProbeParticles)) % (L - 1);
+                    const rawAge = (t_val * 2.5 + i * (L / numProbeParticles)) % (L - 1);
+                    // Si es retrógrada fluye hacia el origen (de L-1 a 0), de lo contrario fluye hacia adelante (de 0 a L-1)
+                    const age = isBackward ? (L - 1 - rawAge) : rawAge;
                     const pos = interpolatePosition(probePoints, age);
+                    
+                    let localPm = interpolatePM25JS(pos[0], pos[1]);
+                    let ica = getICA(localPm);
+                    let radius = 5.0 + Math.min(localPm * 0.25, 12.0); // Más grande en zonas contaminadas
+                    
                     features.push({
                         type: 'Feature',
                         properties: {
-                            color: '#facc15', // Amarillo brillante
-                            radius: 8.0,
+                            color: ica.color,
+                            radius: radius,
                             opacity: 0.95
                         },
                         geometry: {
@@ -2268,7 +2388,7 @@ def generate_3d_map():
                 }
             }
 
-            // Animar partículas fluyendo sobre la trayectoria retrógrada activa (hacia atrás / hacia la estación)
+            // Animar partículas fluyendo sobre la trayectoria retrógrada activa (color y tamaño dinámicos según PM2.5)
             if (typeof backTrajectoryPoints !== 'undefined' && backTrajectoryPoints && backTrajectoryPoints.length > 0) {
                 const numBackParticles = 7;
                 const L = backTrajectoryPoints.length;
@@ -2276,11 +2396,16 @@ def generate_3d_map():
                     const rawAge = (t_val * 2.5 + i * (L / numBackParticles)) % (L - 1);
                     const age = L - 1 - rawAge; // Fluye de regreso a la estación (de L-1 a 0)
                     const pos = interpolatePosition(backTrajectoryPoints, age);
+                    
+                    let localPm = interpolatePM25JS(pos[0], pos[1]);
+                    let ica = getICA(localPm);
+                    let radius = 5.0 + Math.min(localPm * 0.25, 12.0);
+                    
                     features.push({
                         type: 'Feature',
                         properties: {
-                            color: '#22d3ee', // Celeste / Cian brillante
-                            radius: 8.0,
+                            color: ica.color,
+                            radius: radius,
                             opacity: 0.95
                         },
                         geometry: {
