@@ -178,7 +178,25 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
     for lon in grid_lon, lat in grid_lat
         x_scaled = 2.0 * (lon - lon_min) / (lon_max - lon_min) - 1.0
         y_scaled = 2.0 * (lat - lat_min) / (lat_max - lat_min) - 1.0
-        z_scaled = 0.05 # Fondo del valle (adimensional z=0.05)
+        
+        # Estimar elevación de la grilla interpolando las estaciones sensoras
+        # en lugar de usar un z_scaled constante de 0.05 (que queda bajo tierra en las montañas)
+        w_sum = 0.0
+        elev_sum = 0.0
+        for st in inputs
+            dist = sqrt((lon - Float64(st["longitud"]))^2 + (lat - Float64(st["latitud"]))^2)
+            if dist < 1e-5
+                elev_sum = Float64(st["elevacion"])
+                w_sum = 1.0
+                break
+            end
+            w = 1.0 / (dist^2)
+            w_sum += w
+            elev_sum += Float64(st["elevacion"]) * w
+        end
+        elev_val = elev_sum / w_sum
+        
+        z_scaled = clamp((elev_val - elev_min) / (elev_max - elev_min), 0.0, 1.0)
         t_scaled = 1.0  # Último timestamp
         
         grid_pts[1, idx] = x_scaled
@@ -201,27 +219,50 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
     all_points = GridPoint[]
     idx = 1
     for lon in grid_lon, lat in grid_lat
-        # Filtrar puntos que estén muy lejos de todas las estaciones receptoras para evitar artefactos de extrapolación en los bordes
-        is_near_station = false
+        # Calcular elevación interpolada para este punto
+        w_sum = 0.0
+        elev_sum = 0.0
         for st in inputs
             dist = sqrt((lon - Float64(st["longitud"]))^2 + (lat - Float64(st["latitud"]))^2)
-            if dist <= 0.08  # Aprox 8.8 km de distancia máxima a cualquier estación
-                is_near_station = true
+            if dist < 1e-5
+                elev_sum = Float64(st["elevacion"])
+                w_sum = 1.0
+                break
+            end
+            w = 1.0 / (dist^2)
+            w_sum += w
+            elev_sum += Float64(st["elevacion"]) * w
+        end
+        elev_val = elev_sum / w_sum
+
+        # Filtrar puntos para mantenerlos estrictamente cerca del fondo del valle (cerca de estaciones urbanas)
+        # Esto previene que se ubiquen focos en las cumbres o laderas altas de las montañas
+        is_near_urban_station = false
+        for st in inputs
+            # Excluir estaciones de alta montaña (> 1800 msnm, como Santa Elena) de definir el valle urbano
+            if Float64(st["elevacion"]) >= 1800.0
+                continue
+            end
+            dist = sqrt((lon - Float64(st["longitud"]))^2 + (lat - Float64(st["latitud"]))^2)
+            if dist <= 0.022  # Radio estrecho de ~2.4 km para confinarlos al plano urbano del valle
+                is_near_urban_station = true
                 break
             end
         end
         
-        if is_near_station
-            # Estimar elevación simplificada
-            elev_val = elev_min + 0.05 * (elev_max - elev_min) # ~1480 msnm
+        if is_near_urban_station
             push!(all_points, GridPoint(lon, lat, elev_val, emision_grid[idx], vx_grid[idx], vy_grid[idx], grid_pts[1, idx], grid_pts[2, idx], grid_pts[3, idx]))
         end
         idx += 1
     end
     
-    # NUEVO: Buscar el pico de emisión (local maximum) en el vecindario de cada estación
+    # Buscar el pico de emisión (local maximum) en el vecindario de cada estación urbana
     candidates = GridPoint[]
     for st in inputs
+        # Excluir estaciones de alta montaña de ser centros de búsqueda de focos urbanos
+        if Float64(st["elevacion"]) >= 1800.0
+            continue
+        end
         st_lon = Float64(st["longitud"])
         st_lat = Float64(st["latitud"])
         
@@ -230,7 +271,7 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         
         for gp in all_points
             dist = sqrt((gp.lon - st_lon)^2 + (gp.lat - st_lat)^2)
-            if dist <= 0.04  # Buscar en un radio de ~4.4 km de cada estación
+            if dist <= 0.022  # Buscar en un radio estrecho de ~2.4 km
                 if gp.S > max_S
                     max_S = gp.S
                     best_gp = gp
