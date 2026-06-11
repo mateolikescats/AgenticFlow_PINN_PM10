@@ -1051,6 +1051,8 @@ def generate_3d_map():
         let activeAnalysisMode = 'de-donde-viene'; // 'de-donde-viene' o 'hacia-donde-va'
         let activeStationId = null;
         let activeContributingSources = [];
+        let probePoints = [];
+        let backTrajectoryPoints = [];
 
         // Generar geometrías de polígonos hexagonales para fill-extrusion nativa
         function createHexagon(center, radius) {
@@ -1525,9 +1527,11 @@ def generate_3d_map():
             
             let [vx_init, vy_init] = interpolateWindJS(lon, lat);
             document.getElementById('probe-wind').innerText = `[${vx_init.toFixed(2)}, ${vy_init.toFixed(2)}] m/s`;
+            probePoints = points;
         }
 
         function clearProbe() {
+            probePoints = [];
             if (map.getSource('probe-source')) {
                 map.getSource('probe-source').setData({ type: 'FeatureCollection', features: [] });
             }
@@ -1582,6 +1586,7 @@ def generate_3d_map():
             if (map.getSource('back-trajectory-source')) {
                 map.getSource('back-trajectory-source').setData(backGeoJSON);
             }
+            backTrajectoryPoints = points;
         }
 
         // --- MATRIZ DE CONTRIBUCIÓN DE FUENTES (MEJORA 4) ---
@@ -1664,6 +1669,7 @@ def generate_3d_map():
             activeSourceId = null;
             activeSourceType = null;
             activeContributingSources = [];
+            backTrajectoryPoints = [];
             
             if (map.getSource('back-trajectory-source')) {
                 map.getSource('back-trajectory-source').setData({ type: 'FeatureCollection', features: [] });
@@ -2239,6 +2245,51 @@ def generate_3d_map():
                     k++;
                 }
             });
+
+            // Animar partículas fluyendo sobre la sonda de viento activa (hacia adelante)
+            if (typeof probePoints !== 'undefined' && probePoints && probePoints.length > 0) {
+                const numProbeParticles = 6;
+                const L = probePoints.length;
+                for (let i = 0; i < numProbeParticles; i++) {
+                    const age = (t_val * 2.5 + i * (L / numProbeParticles)) % (L - 1);
+                    const pos = interpolatePosition(probePoints, age);
+                    features.push({
+                        type: 'Feature',
+                        properties: {
+                            color: '#facc15', // Amarillo brillante
+                            radius: 8.0,
+                            opacity: 0.95
+                        },
+                        geometry: {
+                            type: 'Point',
+                            coordinates: pos
+                        }
+                    });
+                }
+            }
+
+            // Animar partículas fluyendo sobre la trayectoria retrógrada activa (hacia atrás / hacia la estación)
+            if (typeof backTrajectoryPoints !== 'undefined' && backTrajectoryPoints && backTrajectoryPoints.length > 0) {
+                const numBackParticles = 7;
+                const L = backTrajectoryPoints.length;
+                for (let i = 0; i < numBackParticles; i++) {
+                    const rawAge = (t_val * 2.5 + i * (L / numBackParticles)) % (L - 1);
+                    const age = L - 1 - rawAge; // Fluye de regreso a la estación (de L-1 a 0)
+                    const pos = interpolatePosition(backTrajectoryPoints, age);
+                    features.push({
+                        type: 'Feature',
+                        properties: {
+                            color: '#22d3ee', // Celeste / Cian brillante
+                            radius: 8.0,
+                            opacity: 0.95
+                        },
+                        geometry: {
+                            type: 'Point',
+                            coordinates: pos
+                        }
+                    });
+                }
+            }
 
             if (map.getSource('particles-source')) {
                 map.getSource('particles-source').setData({
