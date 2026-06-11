@@ -124,10 +124,10 @@ def generate_3d_map():
                 "elev": float(r["elevacion"]),
                 "color_u": color_u,
                 "color_S": color_S,
-                "color": color_S, # Default: Emisión S
-                "height_u": 25.0,
-                "height_S": 25.0,
-                "height": 25.0
+                "color": color_u, # Receptores siempre muestran concentración
+                "height_u": pm25 * 35.0, # Hacerlos cilindros 3D visibles
+                "height_S": pm25 * 35.0,
+                "height": pm25 * 35.0
             },
             "geometry": {
                 "type": "Point",
@@ -1130,6 +1130,19 @@ def generate_3d_map():
             return { label: 'Peligroso', color: '#7f1d1d', bg: 'rgba(127, 29, 29, 0.15)', border: 'rgba(127, 29, 29, 0.3)' };
         }
 
+        // Helper para mapear PM2.5 a una escala de color relativa (verde a rojo) matching de python
+        function getRelativeColorForPM25(val) {
+            let ratio = (val - 7.0) / 13.0;
+            ratio = Math.max(0.0, Math.min(1.0, ratio));
+            
+            // Verde (16, 185, 129) a Rojo (239, 68, 68)
+            let r = Math.round(239 * ratio + 16 * (1 - ratio));
+            let g = Math.round(68 * ratio + 185 * (1 - ratio));
+            let b = Math.round(68 * ratio + 129 * (1 - ratio));
+            
+            return `rgb(${r},${g},${b})`;
+        }
+
         // Inicializar mapa de Maplibre GL JS con imágenes satelitales de Esri
         const map = new maplibregl.Map({
             container: 'map',
@@ -1407,9 +1420,9 @@ def generate_3d_map():
             document.getElementById('btn-metric-S').classList.toggle('active', metric === 'S');
             document.getElementById('btn-metric-u').classList.toggle('active', metric === 'u');
 
-            // Actualizar propiedades de extrusión de Receptores
-            map.setPaintProperty('stations-layer', 'fill-extrusion-color', ['get', 'color_' + metric]);
-            map.setPaintProperty('stations-layer', 'fill-extrusion-height', ['get', 'height_' + metric]);
+            // Receptores siempre muestran concentración (u)
+            map.setPaintProperty('stations-layer', 'fill-extrusion-color', ['get', 'color_u']);
+            map.setPaintProperty('stations-layer', 'fill-extrusion-height', ['get', 'height_u']);
 
             // Actualizar propiedades de extrusión de Fuentes Urbanas
             map.setPaintProperty('urban-sources-layer', 'fill-extrusion-color', ['get', 'color_' + metric]);
@@ -1879,12 +1892,11 @@ def generate_3d_map():
                 const dyn_pm25 = getDynamicStationPM25(p.id);
                 p.pm25 = dyn_pm25;
                 p.color_u = getHTMLColorForPM25(dyn_pm25);
-                p.height_u = dyn_pm25 * 25.0; // 25.0 escala receptores
+                p.height_u = dyn_pm25 * 35.0; // 35.0 escala receptores
                 
-                if (activeMetric === 'u') {
-                    p.color = p.color_u;
-                    p.height = p.height_u;
-                }
+                // Siempre actualizar color y height con concentración para receptores
+                p.color = p.color_u;
+                p.height = p.height_u;
             });
             
             if (map.getSource('stations-source')) {
@@ -2370,13 +2382,13 @@ def generate_3d_map():
                     const pos = interpolatePosition(probePoints, age);
                     
                     let localPm = interpolatePM25JS(pos[0], pos[1]);
-                    let ica = getICA(localPm);
-                    let radius = 5.0 + Math.min(localPm * 0.25, 12.0); // Más grande en zonas contaminadas
+                    let dynamicColor = getRelativeColorForPM25(localPm);
+                    let radius = 5.0 + Math.min(localPm * 0.35, 14.0); // Más grande en zonas contaminadas
                     
                     features.push({
                         type: 'Feature',
                         properties: {
-                            color: ica.color,
+                            color: dynamicColor,
                             radius: radius,
                             opacity: 0.95
                         },
@@ -2398,13 +2410,13 @@ def generate_3d_map():
                     const pos = interpolatePosition(backTrajectoryPoints, age);
                     
                     let localPm = interpolatePM25JS(pos[0], pos[1]);
-                    let ica = getICA(localPm);
-                    let radius = 5.0 + Math.min(localPm * 0.25, 12.0);
+                    let dynamicColor = getRelativeColorForPM25(localPm);
+                    let radius = 5.0 + Math.min(localPm * 0.35, 14.0);
                     
                     features.push({
                         type: 'Feature',
                         properties: {
-                            color: ica.color,
+                            color: dynamicColor,
                             radius: radius,
                             opacity: 0.95
                         },
