@@ -79,7 +79,46 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
     vz_pred = phi[5](pts, theta.depvar.vz) # Viento Z
     S_pred = phi[7](pts, theta.depvar.S) # PINN Inversa: Fuentes de Emisión
 
-    # 7. Des-adimensionalizar y consolidar resultados
+    # 7. Calcular Trayectorias No-Lineales usando la Red Neuronal de la PINN directamente
+    println("Calculando trayectorias físicas no-lineales a partir de la red neuronal...")
+    trajectories_list = Vector{Vector{Vector{Float64}}}(undef, N)
+    dt_scaled = 0.055  # Paso temporal escalado
+    for i in 1:N
+        x = pts[1, i]
+        y = pts[2, i]
+        z = pts[3, i]
+        t = pts[4, i]
+        
+        path = Vector{Float64}[]
+        # Registrar posición inicial (real)
+        lon_init = lon_min + (x + 1.0)/2.0 * (lon_max - lon_min)
+        lat_init = lat_min + (y + 1.0)/2.0 * (lat_max - lat_min)
+        elev_init = elev_min + z * (elev_max - elev_min)
+        push!(path, [lon_init, lat_init, elev_init])
+        
+        # Simular 15 pasos de advección física
+        for step in 1:15
+            pt = reshape([x, y, z, t], 4, 1)
+            # Evaluar vientos directamente de la red neuronal en esta coordenada exacta
+            vx = phi[3](pt, theta.depvar.vx)[1]
+            vy = phi[4](pt, theta.depvar.vy)[1]
+            vz = phi[5](pt, theta.depvar.vz)[1]
+            
+            # Actualizar posición en espacio adimensional
+            x = clamp(x + vx * dt_scaled, -1.0, 1.0)
+            y = clamp(y + vy * dt_scaled, -1.0, 1.0)
+            z = clamp(z + vz * dt_scaled, 0.0, 1.0)
+            
+            # Convertir a coordenadas reales para visualización
+            lon = lon_min + (x + 1.0)/2.0 * (lon_max - lon_min)
+            lat = lat_min + (y + 1.0)/2.0 * (lat_max - lat_min)
+            elev = elev_min + z * (elev_max - elev_min)
+            push!(path, [lon, lat, elev])
+        end
+        trajectories_list[i] = path
+    end
+
+    # 8. Des-adimensionalizar y consolidar resultados
     println("Consolidando resultados y guardando en '$output_path'...")
     output_data = Dict{String, Any}[]
     for i in 1:N
@@ -104,7 +143,8 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
             "pred_viento_vx_m_s" => round(vx_est, digits=3),
             "pred_viento_vy_m_s" => round(vy_est, digits=3),
             "pred_viento_vz_m_s" => round(vz_est, digits=3),
-            "pred_emision_S_ug_m3_s" => round(emision_est, digits=6) # <-- Predicción de la PINN Inversa!
+            "pred_emision_S_ug_m3_s" => round(emision_est, digits=6), # <-- Predicción de la PINN Inversa!
+            "trajectory" => trajectories_list[i] # <-- Trayectoria física calculada directamente por la PINN!
         ))
     end
 
