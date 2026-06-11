@@ -793,6 +793,22 @@ def generate_3d_map():
                 </div>
             </div>
 
+            <!-- FASE 3: Tarjeta de Impacto de la Fuente (Hacia dónde va) -->
+            <div id="source-impact-card" class="interactive-card" style="background:rgba(236,72,153,0.04); border-color:rgba(236,72,153,0.3);">
+                <div class="interactive-title" style="color:#ec4899;">
+                    <span>📊 Ficha del Foco Emisor: Impacto Directo</span>
+                    <button class="btn-clear" style="color:#fca5a5;" onclick="clearSourceSelection()">Cerrar</button>
+                </div>
+                <div class="interactive-row">
+                    <span>Foco Seleccionado:</span>
+                    <span id="source-impact-name" style="font-weight:600; color:#ec4899;">-</span>
+                </div>
+                <div id="source-impact-list" style="margin-top:2px;"></div>
+                <div style="font-size:10px; color:#64748b; margin-top:2px; line-height:1.2;">
+                    *Determina la distribución de impacto del contaminante emitido por esta fuente hacia las estaciones receptoras siguiendo su pluma de advección.
+                </div>
+            </div>
+
             <div>
                 <h2>Simulación de Flujo Temporal</h2>
                 <div class="animation-panel">
@@ -908,6 +924,10 @@ def generate_3d_map():
         const trajectoriesData = {trajectories_data_placeholder};
         
         let activeMetric = 'S'; // 'S' o 'u'
+
+        // --- FASE 3: Foco de Dispersión Activo ---
+        let activeSourceId = null;
+        let activeSourceType = null;
 
         // Generar geometrías de polígonos hexagonales para fill-extrusion nativa
         function createHexagon(center, radius) {
@@ -1396,6 +1416,123 @@ def generate_3d_map():
             return ic ? ic.properties.name.replace("Ladera de ", "").replace(" (Norte)", "").replace(" (Sur)", "") : `Foco Industrial #${id}`;
         }
 
+        // --- FASE 3: MÉTODOS DE IMPACTO DE FUENTES ("HACIA DÓNDE VA") ---
+        function selectSource(src_id, src_type, src_name, src_lon, src_lat) {
+            activeSourceId = src_id;
+            activeSourceType = src_type;
+            
+            // Cerrar tarjeta de receptor para evitar confusión
+            document.getElementById('contribution-card').style.display = 'none';
+
+            // Actualizar resaltado de trayectorias
+            updateTrajectoryHighlight();
+
+            // Calcular receptores afectados
+            const traj = trajectoriesData.find(t => t.station_id === src_id && t.type === src_type);
+            if (traj) {
+                const points = traj.points;
+                const receptors = [];
+                
+                stationsGeoJSON.features.forEach(f => {
+                    const p = f.properties;
+                    let min_d = Infinity;
+                    points.forEach(pt => {
+                        let d = Math.sqrt((pt[0] - p.longitud)**2 + (pt[1] - p.latitud)**2);
+                        if (d < min_d) min_d = d;
+                    });
+                    
+                    // IDW peso con suavizado
+                    let w = 1.0 / (min_d * min_d + 0.0004);
+                    receptors.push({
+                        id: p.id,
+                        name: p.name,
+                        weight: w
+                    });
+                });
+                
+                let total_w = receptors.reduce((sum, r) => sum + r.weight, 0);
+                receptors.forEach(r => {
+                    r.percentage = total_w > 0 ? (r.weight / total_w) * 100.0 : 0.0;
+                });
+                
+                receptors.sort((a, b) => b.percentage - a.percentage);
+                
+                // Mostrar tarjeta
+                const el = document.getElementById('source-impact-card');
+                el.style.display = 'flex';
+                document.getElementById('source-impact-name').innerText = src_name;
+                
+                let html = '<table style="width:100%; font-size:11px; margin-top:8px; border-collapse:collapse; color:#e2e8f0;">';
+                html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.12); color:#64748b; font-weight:600;"><th style="text-align:left; padding:4px 0;">Estación Receptora</th><th style="text-align:right; padding:4px 0;">Impacto</th></tr>';
+                
+                receptors.slice(0, 5).forEach(r => {
+                    html += `<tr style="border-bottom:1px solid rgba(255,255,255,0.04);"><td style="padding:6px 0; text-align:left;"><span style="color:#10b981; font-weight:600;">${r.name}</span></td><td style="padding:6px 0; text-align:right; font-weight:700;">${r.percentage.toFixed(1)}%</td></tr>`;
+                });
+                html += '</table>';
+                
+                document.getElementById('source-impact-list').innerHTML = html;
+            }
+
+            // Forzar actualización inmediata del flujo de partículas
+            updateParticles(tGlobal);
+        }
+
+        function updateTrajectoryHighlight() {
+            if (activeSourceId === null) {
+                // Restaurar grosores y opacidades por defecto
+                map.setPaintProperty('urban-trajectories-layer', 'line-width', ['get', 'width']);
+                map.setPaintProperty('urban-trajectories-layer', 'line-opacity', ['get', 'opacity']);
+                map.setPaintProperty('industrial-trajectories-layer', 'line-width', ['get', 'width']);
+                map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', ['get', 'opacity']);
+                
+                map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.85);
+                map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.85);
+            } else {
+                // Si hay una fuente seleccionada, aplicar el resaltado/brillo y atenuar el resto
+                if (activeSourceType === 'urban') {
+                    map.setPaintProperty('urban-trajectories-layer', 'line-width', 
+                        ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
+                    );
+                    map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 
+                        ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
+                    );
+                    // Atenuar todas las industriales
+                    map.setPaintProperty('industrial-trajectories-layer', 'line-width', ['get', 'width']);
+                    map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 0.08);
+                    
+                    // Resaltar foco emisor seleccionado, atenuar los demás
+                    map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
+                        ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                    );
+                    map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.15);
+                } else {
+                    map.setPaintProperty('industrial-trajectories-layer', 'line-width', 
+                        ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
+                    );
+                    map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 
+                        ['case', ['==', ['get', 'station_id'], activeSourceId], 0.95, 0.08]
+                    );
+                    // Atenuar todas las urbanas
+                    map.setPaintProperty('urban-trajectories-layer', 'line-width', ['get', 'width']);
+                    map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 0.08);
+                    
+                    // Resaltar foco emisor seleccionado, atenuar los demás
+                    map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
+                        ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                    );
+                    map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
+                }
+            }
+        }
+
+        function clearSourceSelection() {
+            activeSourceId = null;
+            activeSourceType = null;
+            document.getElementById('source-impact-card').style.display = 'none';
+            updateTrajectoryHighlight();
+            updateParticles(tGlobal);
+        }
+
         // --- SISTEMA DE ANIMACIÓN Y RELOJ SOLAR (MEJORA 3) ---
         let isPlaying = true;
         let tGlobal = 0.0;
@@ -1587,11 +1724,23 @@ def generate_3d_map():
                             const baseRadius = (3.5 + 11.5 * valRatio) * (0.8 + 0.4 * Math.sin(j));
                             const windSpeed = Math.sqrt(traj.vx * traj.vx + traj.vy * traj.vy);
                             const dispersionRate = 0.4 + 1.6 * (windSpeed / 2.0);
-                            const radius = baseRadius * (1.0 + dispersionRate * ageRatio);
+                            let radius = baseRadius * (1.0 + dispersionRate * ageRatio);
 
                             // Opacidad
                             const baseOpacity = (0.12 + 0.65 * valRatio) / (numStreams * 0.35);
-                            const opacity = Math.min(baseOpacity * (1.0 - ageRatio), 0.85);
+                            let opacity = Math.min(baseOpacity * (1.0 - ageRatio), 0.85);
+
+                            // --- FASE 3: Aislamiento de partículas ---
+                            if (activeSourceId !== null) {
+                                if (stationId === activeSourceId && traj.type === activeSourceType) {
+                                    // Foco seleccionado: más grande y brillante
+                                    radius = radius * 1.25;
+                                    opacity = Math.min(opacity * 1.3, 0.95);
+                                } else {
+                                    // Focos no seleccionados: atenuar a 10%
+                                    opacity = opacity * 0.10;
+                                }
+                            }
 
                             features.push({
                                 type: 'Feature',
@@ -1671,6 +1820,8 @@ def generate_3d_map():
             
             map.on('click', 'stations-layer', (e) => {
                 if (e.features.length > 0) {
+                    // Cerrar tarjeta de foco emisor
+                    document.getElementById('source-impact-card').style.display = 'none';
                     const p = e.features[0].properties;
                     calculateContribution(p.longitud, p.latitud, p.name);
                 }
@@ -1679,10 +1830,22 @@ def generate_3d_map():
             // Eventos Fuentes Urbanas
             map.on('mousemove', 'urban-sources-layer', (e) => handleMouse(e, 'Foco Urbano', true));
             map.on('mouseleave', 'urban-sources-layer', hideMouse);
+            map.on('click', 'urban-sources-layer', (e) => {
+                if (e.features.length > 0) {
+                    const p = e.features[0].properties;
+                    selectSource(p.id, 'urban', p.name, p.longitud, p.latitud);
+                }
+            });
 
             // Eventos Fuentes Industriales
             map.on('mousemove', 'industrial-sources-layer', (e) => handleMouse(e, 'Foco Industrial', true));
             map.on('mouseleave', 'industrial-sources-layer', hideMouse);
+            map.on('click', 'industrial-sources-layer', (e) => {
+                if (e.features.length > 0) {
+                    const p = e.features[0].properties;
+                    selectSource(p.id, 'industrial', p.name, p.longitud, p.latitud);
+                }
+            });
         }
 
         // --- GRÁFICO DE CONVERGENCIA CHART.JS ---
