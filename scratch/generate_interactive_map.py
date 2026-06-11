@@ -178,11 +178,7 @@ def generate_3d_map():
                 eye=dict(x=1.5, y=-1.5, z=0.9) # Vista angular ideal
             )
         ),
-        legend=dict(
-            font=dict(color='white'),
-            x=0.02,
-            y=0.98
-        ),
+        showlegend=False, # Ocultamos la leyenda nativa de Plotly por limpieza visual
         margin=dict(l=0, r=0, b=0, t=0),
         autosize=True
     )
@@ -190,8 +186,8 @@ def generate_3d_map():
     # Generar el fragmento HTML del gráfico
     plot_div = op.plot(fig, output_type='div', include_plotlyjs='cdn')
 
-    # Envolver en una plantilla HTML Premium autodescriptiva
-    dashboard_html = f"""<!DOCTYPE html>
+    # Envolver en una plantilla HTML Premium autodescriptiva usando string normal
+    dashboard_template = """<!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
@@ -200,25 +196,25 @@ def generate_3d_map():
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
-        * {{
+        * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-        }}
-        body {{
+        }
+        body {
             font-family: 'Inter', sans-serif;
             background-color: #060814;
             color: #e2e8f0;
             overflow: hidden;
             height: 100vh;
             display: flex;
-        }}
-        .dashboard {{
+        }
+        .dashboard {
             display: flex;
             width: 100vw;
             height: 100vh;
-        }}
-        .sidebar {{
+        }
+        .sidebar {
             width: 420px;
             min-width: 380px;
             background: rgba(10, 15, 30, 0.85);
@@ -231,18 +227,18 @@ def generate_3d_map():
             gap: 24px;
             z-index: 10;
             box-shadow: 10px 0 35px rgba(0, 0, 0, 0.6);
-        }}
-        .map-container {{
+        }
+        .map-container {
             flex: 1;
             height: 100vh;
             background-color: #0a0f1e;
             position: relative;
-        }}
-        .map-container > div {{
+        }
+        .map-container > div {
             width: 100% !important;
             height: 100% !important;
-        }}
-        .badge {{
+        }
+        .badge {
             display: inline-block;
             padding: 4px 8px;
             border-radius: 4px;
@@ -255,8 +251,8 @@ def generate_3d_map():
             align-self: flex-start;
             border: 1px solid rgba(56, 189, 248, 0.3);
             margin-bottom: 5px;
-        }}
-        h1 {{
+        }
+        h1 {
             font-family: 'Outfit', sans-serif;
             font-size: 26px;
             font-weight: 700;
@@ -264,13 +260,13 @@ def generate_3d_map():
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             line-height: 1.2;
-        }}
-        .subtitle {{
+        }
+        .subtitle {
             font-size: 12.5px;
             color: #64748b;
             margin-top: 2px;
-        }}
-        h2 {{
+        }
+        h2 {
             font-family: 'Outfit', sans-serif;
             font-size: 15px;
             font-weight: 600;
@@ -280,26 +276,74 @@ def generate_3d_map():
             margin-top: 10px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-        }}
-        p.description {{
+        }
+        p.description {
             font-size: 13px;
             line-height: 1.6;
             color: #94a3b8;
-        }}
-        .legend-list {{
+        }
+        .toggle-container {
             display: flex;
             flex-direction: column;
             gap: 12px;
-        }}
-        .legend-item {{
+            margin-top: 8px;
+        }
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            font-size: 13px;
+            color: #cbd5e1;
+            user-select: none;
+        }
+        .toggle-label input {
+            display: none;
+        }
+        .toggle-custom {
+            position: relative;
+            width: 36px;
+            height: 20px;
+            background-color: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+        .toggle-custom::after {
+            content: '';
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background-color: #cbd5e1;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s ease;
+        }
+        .toggle-label input:checked + .toggle-custom {
+            background-color: rgba(56, 189, 248, 0.2);
+            border-color: #38bdf8;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+        }
+        .toggle-label input:checked + .toggle-custom::after {
+            background-color: #38bdf8;
+            transform: translateX(16px);
+        }
+        .legend-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .legend-item {
             display: flex;
             align-items: flex-start;
             gap: 14px;
             font-size: 12.5px;
             color: #cbd5e1;
             line-height: 1.5;
-        }}
-        .legend-icon {{
+        }
+        .legend-icon {
             width: 16px;
             height: 16px;
             border-radius: 50%;
@@ -308,36 +352,36 @@ def generate_3d_map():
             display: flex;
             align-items: center;
             justify-content: center;
-        }}
-        .icon-station {{
+        }
+        .icon-station {
             background: linear-gradient(135deg, #facc15, #ef4444);
             border: 2px solid white;
             box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
-        }}
-        .icon-wind {{
+        }
+        .icon-wind {
             background: #3b82f6;
             clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
             border-radius: 0;
-        }}
-        .icon-terrain {{
+        }
+        .icon-terrain {
             background: rgba(16, 185, 129, 0.2);
             border: 1.5px solid rgba(16, 185, 129, 0.6);
             border-radius: 3px;
-        }}
-        .icon-stalk {{
+        }
+        .icon-stalk {
             width: 4px;
             height: 16px;
             background: transparent;
             border-left: 2px dashed rgba(255, 255, 255, 0.5);
             border-radius: 0;
             margin-left: 6px;
-        }}
-        .metric-grid {{
+        }
+        .metric-grid {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 10px;
-        }}
-        .metric-card {{
+        }
+        .metric-card {
             background: rgba(255, 255, 255, 0.02);
             border: 1px solid rgba(255, 255, 255, 0.05);
             padding: 10px;
@@ -346,21 +390,21 @@ def generate_3d_map():
             flex-direction: column;
             align-items: center;
             justify-content: center;
-        }}
-        .metric-value {{
+        }
+        .metric-value {
             font-size: 15px;
             font-weight: 700;
             color: #f1f5f9;
             font-family: 'Outfit', sans-serif;
-        }}
-        .metric-label {{
+        }
+        .metric-label {
             font-size: 9px;
             color: #64748b;
             margin-top: 3px;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-        }}
-        .control-tip {{
+        }
+        .control-tip {
             background: rgba(56, 189, 248, 0.04);
             border-left: 3px solid #38bdf8;
             padding: 12px;
@@ -368,24 +412,24 @@ def generate_3d_map():
             font-size: 11.5px;
             color: #94a3b8;
             line-height: 1.5;
-        }}
-        .control-tip b {{
+        }
+        .control-tip b {
             color: #38bdf8;
-        }}
+        }
         /* Personalizar barra de desplazamiento */
-        .sidebar::-webkit-scrollbar {{
+        .sidebar::-webkit-scrollbar {
             width: 6px;
-        }}
-        .sidebar::-webkit-scrollbar-track {{
+        }
+        .sidebar::-webkit-scrollbar-track {
             background: transparent;
-        }}
-        .sidebar::-webkit-scrollbar-thumb {{
+        }
+        .sidebar::-webkit-scrollbar-thumb {
             background: rgba(255, 255, 255, 0.1);
             border-radius: 3px;
-        }}
-        .sidebar::-webkit-scrollbar-thumb:hover {{
+        }
+        .sidebar::-webkit-scrollbar-thumb:hover {
             background: rgba(255, 255, 255, 0.2);
-        }}
+        }
     </style>
 </head>
 <body>
@@ -402,6 +446,32 @@ def generate_3d_map():
                 <p class="description">
                     Este mapa interactivo muestra la simulación tridimensional del viento y la dispersión de partículas contaminantes (<b>PM2.5</b>) en el cañón del Valle de Aburrá, Colombia. El modelo ha sido entrenado usando <b>Redes Neuronales Informadas por la Física (PINN)</b>, combinando las ecuaciones de conservación de masa de fluidos con mediciones de la red SIATA.
                 </p>
+            </div>
+
+            <div>
+                <h2>Capas Visuales</h2>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="toggle-terrain" checked onchange="toggleLayer('Topografía del Valle', this.checked)">
+                        <span class="toggle-custom"></span>
+                        Topografía del Valle
+                    </label>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="toggle-stations" checked onchange="toggleLayer('Estaciones (PM2.5)', this.checked)">
+                        <span class="toggle-custom"></span>
+                        Estaciones (PM2.5)
+                    </label>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="toggle-wind" checked onchange="toggleLayer('Vector Viento', this.checked)">
+                        <span class="toggle-custom"></span>
+                        Campo de Vientos (Conos)
+                    </label>
+                    <label class="toggle-label">
+                        <input type="checkbox" id="toggle-stalks" checked onchange="toggleLayer('Soportes de Estaciones', this.checked)">
+                        <span class="toggle-custom"></span>
+                        Soportes de Altura (Líneas)
+                    </label>
+                </div>
             </div>
 
             <div>
@@ -468,10 +538,34 @@ def generate_3d_map():
             {plot_div}
         </div>
     </div>
+
+    <!-- Script de Control para ocultar/mostrar capas vía API de Plotly -->
+    <script type="text/javascript">
+        function toggleLayer(layerName, visible) {
+            var gd = document.querySelector('.plotly-graph-div');
+            if (!gd || !gd.data) {
+                // Si el plot no se ha inicializado todavía, reintentar en 100ms
+                setTimeout(function() { toggleLayer(layerName, visible); }, 100);
+                return;
+            }
+            var update = { visible: visible ? true : false };
+            var indices = [];
+            for (var i = 0; i < gd.data.length; i++) {
+                if (gd.data[i].name === layerName) {
+                    indices.push(i);
+                }
+            }
+            if (indices.length > 0) {
+                Plotly.restyle(gd, update, indices);
+            }
+        }
+    </script>
 </body>
 </html>
 """
 
+    dashboard_html = dashboard_template.replace("{plot_div}", plot_div)
+    
     output_html = "reporte/mapa_3d_interactivo.html"
     os.makedirs(os.path.dirname(output_html), exist_ok=True)
     with open(output_html, "w", encoding="utf-8") as f:
