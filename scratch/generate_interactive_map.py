@@ -1500,8 +1500,10 @@ def generate_3d_map():
 
         function setupInteractiveProbe() {
             map.on('click', (e) => {
-                // Evitar clics sobre estaciones para no solapar con la ficha de contribución
-                const features = map.queryRenderedFeatures(e.point, { layers: ['stations-layer'] });
+                // Evitar clics sobre estaciones y focos para no solapar con sus fichas correspondientes
+                const features = map.queryRenderedFeatures(e.point, { 
+                    layers: ['stations-layer', 'urban-sources-layer', 'industrial-sources-layer'] 
+                });
                 if (features.length > 0) return;
 
                 const lon = e.lngLat.lng;
@@ -1804,6 +1806,9 @@ def generate_3d_map():
                 forecastChartInstance = null;
             }
             
+            // Limpiar también la sonda de viento al cambiar el modo de análisis o resetear
+            clearProbe();
+            
             updateTrajectoryHighlight();
             updateParticles(tGlobal);
             updateAnalysisDOM();
@@ -1996,6 +2001,9 @@ def generate_3d_map():
             activeStationId = null;
             activeSourceId = src_id;
             activeSourceType = src_type;
+            
+            // Limpiar la sonda de viento interactiva cuando se selecciona un foco
+            clearProbe();
             
             updateTrajectoryHighlight();
 
@@ -2496,6 +2504,9 @@ def generate_3d_map():
                     
                     activeSourceId = null;
                     activeSourceType = null;
+                    
+                    // Limpiar la sonda de viento interactiva cuando se selecciona un receptor
+                    clearProbe();
                     
                     const p = e.features[0].properties;
                     activeStationId = p.id;

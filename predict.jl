@@ -112,8 +112,9 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         for step in 1:15
             pt = reshape([x, y, z, t], 4, 1)
             # Evaluar vientos directamente de la red neuronal en esta coordenada exacta
-            vx = phi[3](pt, theta.depvar.vx)[1]
-            vy = phi[4](pt, theta.depvar.vy)[1]
+            # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
+            vx = -phi[3](pt, theta.depvar.vx)[1]
+            vy = -phi[4](pt, theta.depvar.vy)[1]
             vz = phi[5](pt, theta.depvar.vz)[1]
             
             # Actualizar posición en espacio adimensional
@@ -138,8 +139,9 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         
         # Des-escalar variables físicas (pm25_max = 100, viento_max = 10)
         pm25_est = clamp(u_pred[i] * 100.0, 0.0, Inf)
-        vx_est = vx_pred[i] * 10.0
-        vy_est = vy_pred[i] * 10.0
+        # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
+        vx_est = -vx_pred[i] * 10.0
+        vy_est = -vy_pred[i] * 10.0
         vz_est = vz_pred[i] * 10.0
         
         # El término de emisión S (fuente predicha de PM2.5 por la PINN Inversa)
@@ -202,8 +204,9 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         S_val = phi[7](pt, theta.depvar.S)[1]
         emision_est = S_val * (100.0 / 3600.0)
         
-        vx_est = phi[3](pt, theta.depvar.vx)[1] * 10.0
-        vy_est = phi[4](pt, theta.depvar.vy)[1] * 10.0
+        # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
+        vx_est = -phi[3](pt, theta.depvar.vx)[1] * 10.0
+        vy_est = -phi[4](pt, theta.depvar.vy)[1] * 10.0
         
         # Trayectoria
         x, y, z, t = x_scaled, y_scaled, z_scaled, 1.0
@@ -211,8 +214,9 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         push!(path, [uc.lon, uc.lat, uc.elev])
         for step in 1:15
             pt_step = reshape([x, y, z, t], 4, 1)
-            vx_val = phi[3](pt_step, theta.depvar.vx)[1]
-            vy_val = phi[4](pt_step, theta.depvar.vy)[1]
+            # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
+            vx_val = -phi[3](pt_step, theta.depvar.vx)[1]
+            vy_val = -phi[4](pt_step, theta.depvar.vy)[1]
             vz_val = phi[5](pt_step, theta.depvar.vz)[1]
             
             x = clamp(x + vx_val * dt_scaled, -1.0, 1.0)
@@ -388,8 +392,9 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         push!(path, [hs.lon, hs.lat, hs.elev])
         for step in 1:15
             pt_step = reshape([x, y, z, t], 4, 1)
-            vx_val = phi[3](pt_step, theta.depvar.vx)[1]
-            vy_val = phi[4](pt_step, theta.depvar.vy)[1]
+            # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
+            vx_val = -phi[3](pt_step, theta.depvar.vx)[1]
+            vy_val = -phi[4](pt_step, theta.depvar.vy)[1]
             vz_val = phi[5](pt_step, theta.depvar.vz)[1]
             
             x = clamp(x + vx_val * dt_scaled, -1.0, 1.0)
@@ -414,8 +419,8 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
             "elevacion" => hs.elev,
             "pm25_ug_m3" => round(pm25_est, digits=3),
             "emision_S_ug_m3_s" => round(hs.S, digits=6),
-            "vx" => round(hs.vx, digits=3),
-            "vy" => round(hs.vy, digits=3),
+            "vx" => round(-hs.vx, digits=3), # Negado
+            "vy" => round(-hs.vy, digits=3), # Negado
             "trajectory" => path
         ))
     end
