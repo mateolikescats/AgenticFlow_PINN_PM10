@@ -120,6 +120,8 @@ def generate_3d_map():
         trajectories_data.append({
             "station_id": st_id,
             "pm25": pm25,
+            "vx": float(r["pred_viento_vx_m_s"]),
+            "vy": float(r["pred_viento_vy_m_s"]),
             "points": points
         })
         
@@ -954,19 +956,43 @@ def generate_3d_map():
                         const pos = interpolatePosition(points, age);
                         const ageRatio = age / 15.0;
 
-                        // Color cambia de rojo/naranja en el origen a amarillo/blanco al dispersarse
-                        const r = Math.round(239 + (250 - 239) * ageRatio);
-                        const g = Math.round(68 + (204 - 68) * ageRatio);
-                        const b = Math.round(68 + (21 - 68) * ageRatio);
+                        // Agregar meandro turbulento (wiggle) perpendicular a la trayectoria
+                        // Usamos funciones trigonométricas basadas en la edad y el ID de la estación
+                        // La amplitud del desvío crece con la edad (distancia al origen)
+                        const wiggleAmplitude = 0.0006 * ageRatio; // Desviación máxima aproximada de 60 metros
+                        const wiggleX = Math.sin(age * 1.2 + stationId * 3) * wiggleAmplitude;
+                        const wiggleY = Math.cos(age * 0.8 + stationId * 7) * wiggleAmplitude;
+                        
+                        const finalPos = [pos[0] + wiggleX, pos[1] + wiggleY];
+
+                        // Escalar la intensidad de PM2.5 (del 0 al 1 entre 7 y 20 ug/m3)
+                        const pm25Ratio = Math.min(Math.max((pm25 - 7.0) / 13.0, 0.0), 1.0);
+
+                        // El color inicial de la pluma depende de la contaminación de su estación de origen:
+                        // Estaciones limpias = verde-amarillo, Estaciones sucias = rojo-naranja
+                        const r_start = Math.round(239 * pm25Ratio + 16 * (1 - pm25Ratio));
+                        const g_start = Math.round(68 * pm25Ratio + 185 * (1 - pm25Ratio));
+                        const b_start = Math.round(68 * pm25Ratio + 129 * (1 - pm25Ratio));
+
+                        // Con la edad (distancia/tiempo), la pluma se oxida y se dispersa hacia amarillo
+                        const r = Math.round(r_start + (250 - r_start) * ageRatio);
+                        const g = Math.round(g_start + (204 - g_start) * ageRatio);
+                        const b = Math.round(b_start + (21 - b_start) * ageRatio);
                         const color = `rgb(${r},${g},${b})`;
 
                         // El tamaño de la partícula aumenta con la edad (dispersión/difusión física)
-                        // y es proporcional a la concentración de la estación fuente
-                        const baseRadius = 8 + (pm25 * 0.8);
-                        const radius = baseRadius * (1.0 + 1.2 * ageRatio);
+                        // y es fuertemente proporcional a la concentración de la estación fuente
+                        const baseRadius = 3 + 12 * pm25Ratio;
+                        
+                        // La velocidad del viento local influye en la tasa de esparcimiento (mayor velocidad = dispersión más rápida)
+                        const windSpeed = Math.sqrt(traj.vx * traj.vx + traj.vy * traj.vy);
+                        const dispersionRate = 0.5 + 1.5 * (windSpeed / 2.0);
+                        const radius = baseRadius * (1.0 + dispersionRate * ageRatio);
 
                         // La opacidad disminuye con la edad (dilución en el aire)
-                        const opacity = 0.8 * (1.0 - ageRatio);
+                        // Zonas con baja contaminación tienen plumas muy tenues/transparentes; zonas críticas son muy densas
+                        const baseOpacity = 0.15 + 0.7 * pm25Ratio;
+                        const opacity = baseOpacity * (1.0 - ageRatio);
 
                         features.push({
                             type: 'Feature',
@@ -978,7 +1004,7 @@ def generate_3d_map():
                             },
                             geometry: {
                                 type: 'Point',
-                                coordinates: [pos[0], pos[1]] // Drapados en 2D en la superficie satelital del relieve
+                                coordinates: finalPos // Drapados en 2D en la superficie satelital del relieve, con turbulencia
                             }
                         });
                     }
