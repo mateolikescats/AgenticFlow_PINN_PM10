@@ -16,16 +16,23 @@ def get_terrain_height(lon, lat):
     return z_surf - 80.0
 
 def get_color_for_pm25(val):
-    ratio = min(max((val - 7.0) / 13.0, 0.0), 1.0)
-    # Gradiente desde verde brillante (16, 185, 129) a rojo intenso (239, 68, 68)
-    r = int(239 * ratio + 16 * (1 - ratio))
-    g = int(68 * ratio + 185 * (1 - ratio))
-    b = int(68 * ratio + 129 * (1 - ratio))
-    return f"rgb({r},{g},{b})"
+    # Clasificación oficial ICA Colombiano (Resolución 2254 de 2017)
+    if val <= 12.0:
+        return "rgb(16,185,129)"  # Bueno (Verde)
+    elif val <= 37.0:
+        return "rgb(234,179,8)"   # Aceptable (Amarillo)
+    elif val <= 54.0:
+        return "rgb(249,115,22)"  # Dañino a grupos sensibles (Naranja)
+    elif val <= 150.0:
+        return "rgb(239,68,68)"   # Dañino a la salud (Rojo)
+    elif val <= 250.0:
+        return "rgb(168,85,247)"  # Muy dañino (Morado)
+    else:
+        return "rgb(127,29,29)"   # Peligroso (Marrón)
 
 def get_color_for_emision(val):
-    # Rango típico de S: 0.0 a 0.0006 ug/m3/s en Medellín
-    ratio = min(max(val / 0.0006, 0.0), 1.0)
+    # Rango típico de S: 0.0 a 0.008 ug/m3/s en Medellín (escala corregida con modelo convergente)
+    ratio = min(max(val / 0.008, 0.0), 1.0)
     # Gradiente desde celeste brillante (56, 189, 248) a rosa/magenta intenso (236, 72, 153)
     r = int(236 * ratio + 56 * (1 - ratio))
     g = int(72 * ratio + 189 * (1 - ratio))
@@ -159,7 +166,7 @@ def generate_3d_map():
         color_S = get_color_for_emision(emision)
         
         height_u = pm25 * 50.0       # e.g. 18 ug/m3 -> 900m
-        height_S = emision * 1500000.0 # e.g. 0.0004 ug/(m3*s) -> 600m
+        height_S = emision * 150000.0  # e.g. 0.008 ug/(m3*s) -> 1200m (escala corregida a 150000)
         
         feat = {
             "type": "Feature",
@@ -730,6 +737,11 @@ def generate_3d_map():
     </style>
 </head>
 <body>
+    <!-- Banner de Error WebGL -->
+    <div id="webgl-error-banner" style="display:none; position:fixed; top:0; left:0; width:100%; background:#ef4444; color:white; font-family:'Inter', sans-serif; text-align:center; padding:15px; font-weight:bold; z-index:9999; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+        ⚠️ ERROR DE RENDERING / WEBGL NO COMPATIBLE: No se puede inicializar el mapa 3D interactivo. Por favor, habilita la aceleración de hardware en la configuración de tu navegador.
+    </div>
+
     <div class="dashboard">
         <div class="sidebar">
             <div>
@@ -798,6 +810,13 @@ def generate_3d_map():
                         <span class="toggle-custom"></span>
                         Vectores de Viento (PINN)
                     </label>
+                    <div style="margin-top: 15px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.15);">
+                        <label class="toggle-label" style="font-weight: 700; color: #f87171; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="toggle-crisis" onchange="setCrisisMode(this.checked)">
+                            <span class="toggle-custom" style="border-color: #ef4444; background: rgba(239, 68, 68, 0.15);"></span>
+                            🚨 Contingencia (Simulado x4)
+                        </label>
+                    </div>
                 </div>
             </div>
 
@@ -882,6 +901,10 @@ def generate_3d_map():
                         <div class="interactive-row">
                             <span>Foco Seleccionado:</span>
                             <span id="source-impact-name" style="font-weight:600; color:#ec4899;">-</span>
+                        </div>
+                        <div class="interactive-row">
+                            <span>Coordenadas Foco:</span>
+                            <span id="source-impact-coords" style="font-weight:600; color:#facc15;">-</span>
                         </div>
                         <div id="source-impact-list" style="margin-top:2px;"></div>
                         
@@ -1108,18 +1131,32 @@ def generate_3d_map():
             };
         });
 
-        // Copiar valores base para recálculo de mitigación dinámico
+        // Copiar valores base para recálculo de mitigación dinámico y simulación de contingencia
         stationsGeoJSON.features.forEach(f => {
             f.properties.base_pm25 = f.properties.pm25;
             f.properties.base_color_u = f.properties.color_u;
             f.properties.base_height_u = f.properties.height_u;
         });
 
-        // Inicializar factores de mitigación en 1.0 para todas las fuentes
+        urbanSourcesGeoJSON.features.forEach(f => {
+            f.properties.base_pm25 = f.properties.pm25;
+            f.properties.base_emision = f.properties.emision;
+        });
+
+        industrialSourcesGeoJSON.features.forEach(f => {
+            f.properties.base_pm25 = f.properties.pm25;
+            f.properties.base_emision = f.properties.emision;
+        });
+
+        // Inicializar factores de mitigación en 1.0 para todas las fuentes y copiar base en trayectoria
         const mitigationFactors = {};
         trajectoriesData.forEach(traj => {
             mitigationFactors[traj.station_id] = 1.0;
+            traj.base_pm25 = traj.pm25;
+            traj.base_emision = traj.emision;
         });
+
+        let isCrisisMode = false;
 
         // Helper para clasificación oficial ICA (AQI Colombiano)
         function getICA(pm25) {
@@ -1131,56 +1168,85 @@ def generate_3d_map():
             return { label: 'Peligroso', color: '#7f1d1d', bg: 'rgba(127, 29, 29, 0.15)', border: 'rgba(127, 29, 29, 0.3)' };
         }
 
-        // Helper para mapear PM2.5 a una escala de color relativa (verde a rojo) matching de python
+        // Helper para mapear PM2.5 a escala de color oficial ICA Colombiana
         function getRelativeColorForPM25(val) {
-            let ratio = (val - 7.0) / 13.0;
-            ratio = Math.max(0.0, Math.min(1.0, ratio));
-            
-            // Verde (16, 185, 129) a Rojo (239, 68, 68)
-            let r = Math.round(239 * ratio + 16 * (1 - ratio));
-            let g = Math.round(68 * ratio + 185 * (1 - ratio));
-            let b = Math.round(68 * ratio + 129 * (1 - ratio));
-            
-            return `rgb(${r},${g},${b})`;
+            return getHTMLColorForPM25(val);
         }
 
-        // Inicializar mapa de Maplibre GL JS con imágenes satelitales de Esri
-        const map = new maplibregl.Map({
-            container: 'map',
-            style: {
-                version: 8,
-                sources: {
-                    'satellite': {
-                        type: 'raster',
-                        tiles: [
-                            'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-                        ],
-                        tileSize: 256,
-                        attribution: 'Tiles &copy; Esri'
-                    }
-                },
-                layers: [
-                    {
-                        id: 'satellite',
-                        type: 'raster',
-                        source: 'satellite',
-                        minzoom: 0,
-                        maxzoom: 20
-                    }
-                ]
-            },
-            center: [-75.567, 6.2518], // Medellín Centro
-            zoom: 11.6,
-            pitch: 58,
-            bearing: -12,
-            maxZoom: 19,
-            minZoom: 9
-        });
+        // Global error display window helper
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error("Error global capturado:", message, "en", source, "línea", lineno);
+            const errBanner = document.getElementById('webgl-error-banner');
+            if (errBanner) {
+                errBanner.style.display = 'block';
+                errBanner.innerHTML = `⚠️ ERROR EN PÁGINA DETECTADO: ${message} (línea ${lineno})`;
+            }
+            return false;
+        };
 
-        // Controles de navegación nativos
-        map.addControl(new maplibregl.NavigationControl());
+        function isWebGLSupported() {
+            try {
+                const canvas = document.createElement('canvas');
+                return !!(window.WebGLRenderingContext && (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')));
+            } catch (e) {
+                return false;
+            }
+        }
 
-        map.on('load', () => {
+        let map = null;
+        if (!isWebGLSupported()) {
+            document.getElementById('webgl-error-banner').style.display = 'block';
+        } else {
+            try {
+                map = new maplibregl.Map({
+                    container: 'map',
+                    style: {
+                        version: 8,
+                        sources: {
+                            'satellite': {
+                                type: 'raster',
+                                tiles: [
+                                    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                                ],
+                                tileSize: 256,
+                                attribution: 'Tiles &copy; Esri'
+                            }
+                        },
+                        layers: [
+                            {
+                                id: 'satellite',
+                                type: 'raster',
+                                source: 'satellite',
+                                minzoom: 0,
+                                maxzoom: 20
+                            }
+                        ]
+                    },
+                    center: [-75.567, 6.2518], // Medellín Centro
+                    zoom: 11.6,
+                    pitch: 58,
+                    bearing: -12,
+                    maxZoom: 19,
+                    minZoom: 9
+                });
+            } catch (e) {
+                console.error("Error inicializando Maplibre GL:", e);
+                document.getElementById('webgl-error-banner').style.display = 'block';
+            }
+        }
+
+        if (map) {
+            // Controles de navegación nativos
+            map.addControl(new maplibregl.NavigationControl());
+
+            map.on('error', (e) => {
+                console.error("Error del mapa Maplibre GL:", e);
+                if (e && e.error && (e.error.message.includes('WebGL') || e.error.message.includes('context lost'))) {
+                    document.getElementById('webgl-error-banner').style.display = 'block';
+                }
+            });
+
+            map.on('load', () => {
             // 1. Agregar terreno 3D (Terrarium)
             map.addSource('terrain', {
                 type: 'raster-dem',
@@ -1402,6 +1468,7 @@ def generate_3d_map():
 
         // Alternar visualización de capas de Maplibre
         function toggleLayer(layerId, visible) {
+            if (!map) return;
             if (map.getLayer(layerId)) {
                 map.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
             }
@@ -1409,11 +1476,17 @@ def generate_3d_map():
 
         // Alternar el Terreno 3D satelital
         function toggleTerrain(visible) {
-            map.setTerrain(visible ? { source: 'terrain', exaggeration: 1.5 } : null);
+            if (!map) return;
+            try {
+                map.setTerrain(visible ? { source: 'terrain', exaggeration: 1.5 } : null);
+            } catch (err) {
+                console.error("Error al alternar terreno:", err);
+            }
         }
 
         // --- MANEJO DEL SELECTOR DE MÉTRICA ---
         function setMetric(metric) {
+            if (!map) return;
             if (activeMetric === metric) return;
             activeMetric = metric;
 
@@ -1495,8 +1568,33 @@ def generate_3d_map():
                 sum_pm += pms[i] * w;
             }
             
-            if (sum_weights === 0) return 12.0; // Default
-            return sum_pm / sum_weights;
+            let base_pm = sum_weights > 0 ? (sum_pm / sum_weights) : 12.0;
+            
+            // Añadir contribución local de los focos de emisión en la vecindad inmediata de la fuente (pluma física)
+            let local_boost = 0.0;
+            
+            // 1. Aporte de fuentes urbanas (tránsito local)
+            urbanSourcesGeoJSON.features.forEach(f => {
+                const p = f.properties;
+                let dist = Math.sqrt((p.longitud - lon)**2 + (p.latitud - lat)**2);
+                if (dist < 0.02) { // aprox 2.2 km
+                    let factor = (0.02 - dist) / 0.02; // decae linealmente a 0
+                    local_boost += p.pm25 * 0.45 * factor;
+                }
+            });
+            
+            // 2. Aporte de fuentes industriales (chimeneas de ladera con alta tasa S)
+            industrialSourcesGeoJSON.features.forEach(f => {
+                const p = f.properties;
+                let dist = Math.sqrt((p.longitud - lon)**2 + (p.latitud - lat)**2);
+                if (dist < 0.025) { // aprox 2.7 km
+                    let factor = (0.025 - dist) / 0.025;
+                    // Escala de aporte según la tasa de emisión S de la PINN
+                    local_boost += (p.emision * 5500.0) * factor;
+                }
+            });
+            
+            return base_pm + local_boost;
         }
 
         function setupInteractiveProbe() {
@@ -1660,6 +1758,7 @@ def generate_3d_map():
         function clearProbe() {
             probePoints = [];
             activeProbeCoords = null;
+            if (!map) return;
             if (map.getSource('probe-source')) {
                 map.getSource('probe-source').setData({ type: 'FeatureCollection', features: [] });
             }
@@ -1669,6 +1768,7 @@ def generate_3d_map():
 
         // Función para calcular y renderizar la trayectoria dinámica (hacia adelante o hacia atrás)
         function createDynamicTrajectory(lon, lat, isBackward) {
+            if (!map) return;
             const points = [];
             let cur_lon = lon;
             let cur_lat = lat;
@@ -1734,6 +1834,7 @@ def generate_3d_map():
 
         // Función unificada para recalcular la trayectoria y visualizaciones activas basadas en la pestaña
         function updateActiveAnalysis() {
+            if (!map) return;
             const isBackward = (activeAnalysisMode === 'de-donde-viene');
             
             // 1. Si hay un receptor seleccionado (Estación SIATA)
@@ -1783,7 +1884,7 @@ def generate_3d_map():
                 });
                 
                 let weight = 1.0 / (min_d * min_d + 0.0004);
-                let source_intensity = traj.type === 'industrial' ? traj.emision * 1200.0 : traj.pm25 * 0.06;
+                let source_intensity = traj.type === 'industrial' ? traj.emision * 100.0 : traj.pm25 * 0.06;
                 
                 contributions.push({
                     id: traj.station_id,
@@ -1905,11 +2006,12 @@ def generate_3d_map():
         let forecastChartInstance = null;
 
         function getHTMLColorForPM25(val) {
-            let ratio = Math.min(Math.max((val - 7.0) / 13.0, 0.0), 1.0);
-            let r = Math.round(239 * ratio + 16 * (1 - ratio));
-            let g = Math.round(68 * ratio + 185 * (1 - ratio));
-            let b = Math.round(68 * ratio + 129 * (1 - ratio));
-            return `rgb(${r},${g},${b})`;
+            if (val <= 12.0) return "rgb(16,185,129)";  // Bueno (Verde)
+            if (val <= 37.0) return "rgb(234,179,8)";   // Aceptable (Amarillo)
+            if (val <= 54.0) return "rgb(249,115,22)";  // Dañino a sensibles (Naranja)
+            if (val <= 150.0) return "rgb(239,68,68)";  // Dañino a la salud (Rojo)
+            if (val <= 250.0) return "rgb(168,85,247)"; // Muy dañino (Morado)
+            return "rgb(127,29,29)";                    // Peligroso (Marrón)
         }
 
         function getDynamicStationPM25(stationId) {
@@ -1928,7 +2030,7 @@ def generate_3d_map():
                     if (d < min_d) min_d = d;
                 });
                 let weight = 1.0 / (min_d * min_d + 0.0004);
-                let source_intensity = traj.type === 'industrial' ? traj.emision * 1200.0 : traj.pm25 * 0.06;
+                let source_intensity = traj.type === 'industrial' ? traj.emision * 100.0 : traj.pm25 * 0.06;
                 contributions.push({
                     id: traj.station_id,
                     type: traj.type,
@@ -1949,21 +2051,96 @@ def generate_3d_map():
             return base_pm25 * scale_factor;
         }
 
-        function updateDynamicStations() {
+        function getHTMLColorForEmision(val) {
+            let ratio = Math.min(Math.max(val / 0.008, 0.0), 1.0);
+            let r = Math.round(236 * ratio + 56 * (1 - ratio));
+            let g = Math.round(72 * ratio + 189 * (1 - ratio));
+            let b = Math.round(153 * ratio + 248 * (1 - ratio));
+            return `rgb(${r},${g},${b})`;
+        }
+
+        function setCrisisMode(checked) {
+            isCrisisMode = checked;
+            updateDynamicStationsAndSources();
+            updateParticles(tGlobal);
+        }
+
+        function updateDynamicStationsAndSources() {
+            if (!map) return;
+            const mult = isCrisisMode ? 4.2 : 1.0;
+            
+            // 1. Actualizar Receptores (estaciones)
             stationsGeoJSON.features.forEach(f => {
                 const p = f.properties;
-                const dyn_pm25 = getDynamicStationPM25(p.id);
+                const dyn_pm25 = getDynamicStationPM25(p.id) * mult;
                 p.pm25 = dyn_pm25;
                 p.color_u = getHTMLColorForPM25(dyn_pm25);
-                p.height_u = dyn_pm25 * 35.0; // 35.0 escala receptores
+                p.height_u = dyn_pm25 * 35.0;
                 
-                // Siempre actualizar color y height con concentración para receptores
+                // Receptores siempre muestran concentración (u)
                 p.color = p.color_u;
                 p.height = p.height_u;
             });
             
+            // 2. Actualizar Fuentes Urbanas
+            urbanSourcesGeoJSON.features.forEach(f => {
+                const p = f.properties;
+                const pm25 = p.base_pm25 * mult;
+                const emision = p.base_emision * mult;
+                p.pm25 = pm25;
+                p.emision = emision;
+                p.color_u = getHTMLColorForPM25(pm25);
+                p.color_S = getHTMLColorForEmision(emision);
+                p.height_u = pm25 * 50.0;
+                p.height_S = emision * 150000.0; // max ~1200m
+                
+                p.color = p['color_' + activeMetric];
+                p.height = p['height_' + activeMetric];
+            });
+            
+            // 3. Actualizar Fuentes Industriales
+            industrialSourcesGeoJSON.features.forEach(f => {
+                const p = f.properties;
+                const pm25 = p.base_pm25 * mult;
+                const emision = p.base_emision * mult;
+                p.pm25 = pm25;
+                p.emision = emision;
+                p.color_u = getHTMLColorForPM25(pm25);
+                p.color_S = getHTMLColorForEmision(emision);
+                p.height_u = pm25 * 50.0;
+                p.height_S = emision * 150000.0; // max ~1200m
+                
+                p.color = p['color_' + activeMetric];
+                p.height = p['height_' + activeMetric];
+            });
+
+            // 4. Actualizar datos de trayectorias (estelas) para partículas
+            trajectoriesData.forEach(traj => {
+                traj.pm25 = traj.base_pm25 * mult;
+                traj.emision = traj.base_emision * mult;
+            });
+            
+            // Actualizar fuentes de datos de Maplibre
             if (map.getSource('stations-source')) {
                 map.getSource('stations-source').setData(stationsGeoJSON);
+            }
+            if (map.getSource('urban-sources-source')) {
+                map.getSource('urban-sources-source').setData(urbanSourcesGeoJSON);
+            }
+            if (map.getSource('industrial-sources-source')) {
+                map.getSource('industrial-sources-source').setData(industrialSourcesGeoJSON);
+            }
+            
+            // Si hay un sensor o foco seleccionado, forzar actualizar su información en UI
+            if (activeStationId !== null) {
+                const stFeature = stationsGeoJSON.features.find(f => f.properties.id === activeStationId);
+                if (stFeature) {
+                    calculateContribution(stFeature.properties.longitud, stFeature.properties.latitud, stFeature.properties.name);
+                }
+            }
+            if (activeSourceId !== null) {
+                // Actualizar tabla del foco activo
+                selectSource(activeSourceId, activeSourceType, document.getElementById('source-impact-name').innerText, 0, 0);
             }
         }
 
@@ -1975,7 +2152,7 @@ def generate_3d_map():
                 document.getElementById('mitigation-label').innerText = val === '0' ? 'Cerrado (0%)' : `${val}%`;
                 
                 // Actualizar estaciones dinámicamente en el relieve
-                updateDynamicStations();
+                updateDynamicStationsAndSources();
                 
                 // Actualizar tabla del foco activo
                 selectSource(activeSourceId, activeSourceType, document.getElementById('source-impact-name').innerText, 0, 0);
@@ -2095,6 +2272,9 @@ def generate_3d_map():
                 receptors.sort((a, b) => b.percentage - a.percentage);
                 
                 document.getElementById('source-impact-name').innerText = src_name;
+                if (src_lon !== 0 && src_lat !== 0) {
+                    document.getElementById('source-impact-coords').innerText = `${src_lat.toFixed(5)}°, ${src_lon.toFixed(5)}°`;
+                }
                 
                 let html = '<table style="width:100%; font-size:11px; margin-top:8px; border-collapse:collapse; color:#e2e8f0;">';
                 html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.12); color:#64748b; font-weight:600;"><th style="text-align:left; padding:4px 0;">Estación Receptora</th><th style="text-align:center; padding:4px 0;">ICA actual</th><th style="text-align:right; padding:4px 0;">Impacto Pluma</th></tr>';
@@ -2125,6 +2305,7 @@ def generate_3d_map():
         }
 
         function updateTrajectoryHighlight() {
+            if (!map) return;
             if (activeSourceId === null && activeStationId === null) {
                 map.setPaintProperty('urban-trajectories-layer', 'line-width', ['get', 'width']);
                 map.setPaintProperty('urban-trajectories-layer', 'line-opacity', ['get', 'opacity']);
@@ -2144,14 +2325,14 @@ def generate_3d_map():
                     
                     if (activeSourceType === 'urban') {
                         map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
-                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.45]
                         );
-                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.15);
+                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.45);
                     } else {
                         map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
-                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.45]
                         );
-                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
+                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.45);
                     }
                 } else {
                     // Modo hacia-donde-va (foco emisor seleccionado): resaltar su estela precalculada
@@ -2166,9 +2347,9 @@ def generate_3d_map():
                         map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 0.08);
                         
                         map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
-                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.45]
                         );
-                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.15);
+                        map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.45);
                     } else {
                         map.setPaintProperty('industrial-trajectories-layer', 'line-width', 
                             ['case', ['==', ['get', 'station_id'], activeSourceId], 8.0, ['get', 'width']]
@@ -2180,9 +2361,9 @@ def generate_3d_map():
                         map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 0.08);
                         
                         map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
-                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.15]
+                            ['case', ['==', ['get', 'id'], activeSourceId], 0.95, 0.45]
                         );
-                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
+                        map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.45);
                     }
                 }
             } else if (activeStationId !== null) {
@@ -2196,10 +2377,10 @@ def generate_3d_map():
                     map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', ['case', contribFilter, 0.7, 0.05]);
                     
                     map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 
-                        ['case', ['in', ['get', 'id'], ['literal', activeContributingSources]], 0.85, 0.15]
+                        ['case', ['in', ['get', 'id'], ['literal', activeContributingSources]], 0.85, 0.45]
                     );
                     map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 
-                        ['case', ['in', ['get', 'id'], ['literal', activeContributingSources]], 0.85, 0.15]
+                        ['case', ['in', ['get', 'id'], ['literal', activeContributingSources]], 0.85, 0.45]
                     );
                 } else {
                     // En modo hacia-donde-va para estación: atenuar todos los focos y sus estelas
@@ -2207,8 +2388,8 @@ def generate_3d_map():
                     map.setPaintProperty('urban-trajectories-layer', 'line-opacity', 0.05);
                     map.setPaintProperty('industrial-trajectories-layer', 'line-width', 1.0);
                     map.setPaintProperty('industrial-trajectories-layer', 'line-opacity', 0.05);
-                    map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.15);
-                    map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.15);
+                    map.setPaintProperty('urban-sources-layer', 'fill-extrusion-opacity', 0.45);
+                    map.setPaintProperty('industrial-sources-layer', 'fill-extrusion-opacity', 0.45);
                 }
             }
         }
@@ -2277,6 +2458,7 @@ def generate_3d_map():
         }
 
         function updateLight(t_val) {
+            if (!map) return;
             let total_hours = 6.0 + (t_val / 15.0) * 24.0;
             if (total_hours >= 24.0) total_hours -= 24.0;
             
@@ -2284,25 +2466,9 @@ def generate_3d_map():
             // El sol gira 360 grados azimutales en 24 horas
             let azimuth = pct * 360.0;
             
-            let polar = 85.0; // Casi rasante en la noche
-            let intensity = 0.15;
-            let color = '#0f172a'; // noche azul muy profunda
-            
-            if (total_hours >= 6.0 && total_hours <= 18.0) {
-                let t_day = (total_hours - 6.0) / 12.0; // 0.0 a 1.0
-                let elevation = Math.sin(Math.PI * t_day) * 75.0; // Max 75 grados de altura
-                polar = 90.0 - elevation;
-                intensity = 0.15 + 0.9 * Math.sin(Math.PI * t_day);
-                
-                // Cambiar color solar
-                if (total_hours < 7.5) {
-                    color = '#fdba74'; // Amanecer (Naranja suave)
-                } else if (total_hours > 16.5) {
-                    color = '#f97316'; // Atardecer (Naranja intenso solar)
-                } else {
-                    color = '#ffffff'; // Día (Blanco brillante)
-                }
-            }
+            let polar = 35.0; // Ángulo diagonal fijo óptimo para sombras 3D
+            let intensity = 1.0; // Intensidad al 100% constante para que los cilindros no se vean grises ni oscuros
+            let color = '#ffffff'; // Luz blanca brillante constante para preservar los colores del ICA
             
             if (map.style) {
                 map.setLight({
@@ -2332,6 +2498,7 @@ def generate_3d_map():
         }
 
         function updateParticles(t_val) {
+            if (!map) return;
             const features = [];
             const releaseInterval = 1.6;
             const numStreams = 6;
@@ -2376,7 +2543,7 @@ def generate_3d_map():
                             r_end = 250; g_end = 204; b_end = 21;
                         } else {
                             // Escala Celeste-to-Magenta
-                            valRatio = Math.min(Math.max(emision / 0.0006, 0.0), 1.0);
+                            valRatio = Math.min(Math.max(emision / 0.008, 0.0), 1.0);
                             r_start = Math.round(236 * valRatio + 56 * (1 - valRatio));
                             g_start = Math.round(72 * valRatio + 189 * (1 - valRatio));
                             b_start = Math.round(153 * valRatio + 248 * (1 - valRatio));
@@ -2409,6 +2576,11 @@ def generate_3d_map():
                             // Opacidad
                             const baseOpacity = (0.12 + 0.65 * valRatio) / (numStreams * 0.35);
                             let opacity = Math.min(baseOpacity * (1.0 - ageRatio), 0.85);
+
+                            if (isCrisisMode) {
+                                radius = radius * 1.5;
+                                opacity = Math.min(opacity * 1.5, 0.95);
+                            }
 
                             // --- FASE 3: Aislamiento de partículas ---
                             if (activeSourceId !== null) {
@@ -2609,6 +2781,7 @@ def generate_3d_map():
                 }
             });
         }
+        } // Fin de if (map)
 
         // --- GRÁFICO DE CONVERGENCIA CHART.JS ---
         const epochsList = {epochs_list_placeholder};

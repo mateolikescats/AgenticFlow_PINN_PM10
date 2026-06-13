@@ -16,6 +16,47 @@ struct GridPoint
     z::Float64
 end
 
+function is_in_valley_floor(lon::Float64, lat::Float64)
+    # Hacemos una interpolación lineal por tramos de la longitud central del valle según la latitud
+    center_lon = -75.57 # Valor basal por defecto (Medellín Centro)
+    
+    if lat < 6.09308
+        center_lon = -75.63776
+    elseif lat < 6.14550
+        # Tramo Caldas -> Sabaneta
+        t = (lat - 6.09308) / (6.14550 - 6.09308)
+        center_lon = -75.63776 + t * (-75.62126 - -75.63776)
+    elseif lat < 6.16868
+        # Tramo Sabaneta -> Itagüí
+        t = (lat - 6.14550) / (6.16868 - 6.14550)
+        center_lon = -75.62126 + t * (-75.58197 - -75.62126)
+    elseif lat < 6.22189
+        # Tramo Itagüí -> Belén
+        t = (lat - 6.16868) / (6.22189 - 6.16868)
+        center_lon = -75.58197 + t * (-75.61060 - -75.58197)
+    elseif lat < 6.25256
+        # Tramo Belén -> Medellín Centro
+        t = (lat - 6.22189) / (6.25256 - 6.22189)
+        center_lon = -75.61060 + t * (-75.56958 - -75.61060)
+    elseif lat < 6.33755
+        # Tramo Medellín Centro -> Bello
+        t = (lat - 6.25256) / (6.33755 - 6.25256)
+        center_lon = -75.56958 + t * (-75.56780 - -75.56958)
+    elseif lat < 6.34536
+        # Tramo Bello -> Copacabana
+        t = (lat - 6.33755) / (6.34536 - 6.33755)
+        center_lon = -75.56780 + t * (-75.50475 - -75.56780)
+    else
+        # Tramo Copacabana -> Girardota
+        t = (lat - 6.34536) / (6.43696 - 6.34536)
+        center_lon = -75.50475 + t * (-75.33040 - -75.50475)
+    end
+    
+    # Ancho del valle (permitimos un margen de +- 0.024 grados de longitud, unos 2.6 km)
+    # Esto contiene el plano del valle pero excluye las laderas montañosas profundas
+    return abs(lon - center_lon) <= 0.024
+end
+
 function run_prediction(input_path::String="input_points.json", output_path::String="output_predictions.json", model_path::String="modelo_pinn.jld2")
     println("==== Predictor Standalone de la iPINN ====")
     
@@ -185,6 +226,8 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         (name="Bello (Norte-Centro)", lat=6.3375502, lon=-75.5678024, id=3, elev=1506.0),
         (name="Medellín Centro (Tráfico)", lat=6.2525611, lon=-75.5695801, id=4, elev=1479.0),
         (name="Medellín Belén (Industrial)", lat=6.2218938, lon=-75.6106033, id=5, elev=1582.0),
+        (name="Envigado (Sur)", lat=6.1856666, lon=-75.5972061, id=9, elev=1532.0),
+        (name="Envigado Ladera (Sur)", lat=6.1825418, lon=-75.5506363, id=10, elev=1950.0),
         (name="Itagüí (Sur Industrial)", lat=6.1686831, lon=-75.5819702, id=6, elev=1584.0),
         (name="Sabaneta (Sur)", lat=6.1455002, lon=-75.6212616, id=7, elev=1626.0),
         (name="Caldas (Sur)", lat=6.0930777, lon=-75.6377640, id=8, elev=1759.0)
@@ -335,13 +378,109 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         idx += 1
     end
     
-    # Ordenar por emisión S descendente
-    sort!(all_grid_points, by = p -> p.S, rev=true)
+    # 1. Filtrar candidatos usando el perfil geográfico del plano del valle (offline-safe y robusto)
+    valley_candidates = GridPoint[]
+    for gp in all_grid_points
+        if is_in_valley_floor(gp.lon, gp.lat)
+            push!(valley_candidates, gp)
+        end
+    end
+
+    # 2. Ordenar candidatos del valle por emisión S descendente
+    sort!(valley_candidates, by = p -> p.S, rev=true)
     
-    # Ejecutar NMS espacial libre
+    # 3. Tomar los mejores 60 candidatos del plano del valle para optimizar continuamente (Hill-Climbing)
+    # y así obtener coordenadas totalmente continuas libres de rejilla (mesh-free)
+    n_opt = min(60, length(valley_candidates))
+    refined_candidates = GridPoint[]
+    
+    for gp in valley_candidates[1:n_opt]
+        x_opt, y_opt, z_opt = gp.x, gp.y, gp.z
+        step_x = 0.005
+        step_y = 0.005
+        step_z = 0.005
+        
+        for iter in 1:25
+            pt_cur = reshape([x_opt, y_opt, z_opt, 1.0], 4, 1)
+            best_S = phi[7](pt_cur, theta.depvar.S)[1]
+            improved = false
+            
+            for (dx, dy, dz) in [
+                (step_x, 0.0, 0.0), (-step_x, 0.0, 0.0),
+                (0.0, step_y, 0.0), (0.0, -step_y, 0.0),
+                (0.0, 0.0, step_z), (0.0, 0.0, -step_z)
+            ]
+                xn = clamp(x_opt + dx, -1.0, 1.0)
+                yn = clamp(y_opt + dy, -1.0, 1.0)
+                zn = clamp(z_opt + dz, 0.0, 1.0)
+                
+                lon_n = lon_min + (xn + 1.0)/2.0 * (lon_max - lon_min)
+                lat_n = lat_min + (yn + 1.0)/2.0 * (lat_max - lat_min)
+                
+                # Mantener la optimización acotada estrictamente dentro del plano del valle
+                if !is_in_valley_floor(lon_n, lat_n)
+                    continue
+                end
+                
+                pt_n = reshape([xn, yn, zn, 1.0], 4, 1)
+                S_n = phi[7](pt_n, theta.depvar.S)[1]
+                
+                if S_n > best_S
+                    x_opt, y_opt, z_opt = xn, yn, zn
+                    improved = true
+                    break
+                end
+            end
+            if !improved
+                step_x *= 0.5
+                step_y *= 0.5
+                step_z *= 0.5
+            end
+            if step_x < 1e-6
+                break
+            end
+        end
+        
+        # Convertir a coordenadas físicas continuas refinadas
+        lon_opt = lon_min + (x_opt + 1.0)/2.0 * (lon_max - lon_min)
+        lat_opt = lat_min + (y_opt + 1.0)/2.0 * (lat_max - lat_min)
+        
+        # Interpolar elevación para la nueva coordenada continua
+        w_sum = 0.0
+        elev_sum = 0.0
+        for st in inputs
+            dist = sqrt((lon_opt - Float64(st["longitud"]))^2 + (lat_opt - Float64(st["latitud"]))^2)
+            if dist < 1e-5
+                elev_sum = Float64(st["elevacion"])
+                w_sum = 1.0
+                break
+            end
+            w = 1.0 / (dist^2)
+            w_sum += w
+            elev_sum += Float64(st["elevacion"]) * w
+        end
+        elev_opt = elev_sum / w_sum
+        
+        # Evaluar emisión y viento refinados continuamente
+        pt_opt = reshape([x_opt, y_opt, z_opt, 1.0], 4, 1)
+        S_opt = phi[7](pt_opt, theta.depvar.S)[1] * (100.0 / 3600.0)
+        vx_opt = phi[3](pt_opt, theta.depvar.vx)[1] * 10.0
+        vy_opt = phi[4](pt_opt, theta.depvar.vy)[1] * 10.0
+        
+        push!(refined_candidates, GridPoint(
+            lon_opt, lat_opt, elev_opt,
+            S_opt, vx_opt, vy_opt,
+            x_opt, y_opt, z_opt
+        ))
+    end
+    
+    # 4. Ordenar los candidatos refinados por su emisión S óptima
+    sort!(refined_candidates, by = p -> p.S, rev=true)
+    
+    # 5. Ejecutar NMS espacial libre sobre coordenadas continuas refinadas
     hotspots = GridPoint[]
     min_dist_deg = 0.032 # Aprox 3.5 km de distancia mínima
-    for gp in all_grid_points
+    for gp in refined_candidates
         too_close = false
         for hs in hotspots
             dist = sqrt((gp.lon - hs.lon)^2 + (gp.lat - hs.lat)^2)
@@ -368,13 +507,15 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
             if dist < min_d
                 min_d = dist
                 # Buscar correspondencia de nombre
+                matched_name = "Zona Ladera"
                 for uc in urban_centers
                     d_uc = sqrt((uc.lon - Float64(st["longitud"]))^2 + (uc.lat - Float64(st["latitud"]))^2)
                     if d_uc < 1e-4
-                        closest_name = "Ladera de " * uc.name
+                        matched_name = "Ladera de " * uc.name
                         break
                     end
                 end
+                closest_name = matched_name
             end
         end
         if closest_name == "Zona Ladera"
