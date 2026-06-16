@@ -57,7 +57,7 @@ class ExecuteJuliaPINNTool(BaseTool):
             print(f"[MLOps Warning] No se pudo generar la gráfica de pérdida: {e}", flush=True)
 
     def _run(self, epochs: int, learning_rate: float) -> str:
-        memory_file = "mlops_memory.json"
+        memory_file = "data/mlops_memory.json"
         history = []
         if os.path.exists(memory_file):
             try:
@@ -112,7 +112,7 @@ class ExecuteJuliaPINNTool(BaseTool):
         while retry_count < max_retries:
             # Escribir configuración temporal para que Julia la lea
             config = {"epochs": current_epochs, "learning_rate": current_lr}
-            with open("pinn_config.json", "w") as f:
+            with open("models/pinn_config.json", "w") as f:
                 json.dump(config, f)
                 
             msg = f"[RUN] [Intento {retry_count + 1}/{max_retries}] Lanzando Julia con {current_epochs} epochs y LR={current_lr}..."
@@ -240,11 +240,11 @@ class SpatiotemporalClusteringTool(BaseTool):
     args_schema: Type[BaseModel] = ClusteringInput
     
     def _run(self, num_components: int) -> str:
-        if not os.path.exists("output_predictions.json"):
-            return "Error: No se encontró el archivo de predicciones 'output_predictions.json'. Por favor ejecuta primero predict_realtime.py para generar las predicciones de las últimas 96 horas."
+        if not os.path.exists("data/output_predictions.json"):
+            return "Error: No se encontró el archivo de predicciones 'data/output_predictions.json'. Por favor ejecuta primero predict_realtime.py para generar las predicciones de las últimas 96 horas."
             
         try:
-            with open("output_predictions.json", "r", encoding="utf-8") as f:
+            with open("data/output_predictions.json", "r", encoding="utf-8") as f:
                 data = json.load(f)
                 
             df = pd.DataFrame(data)
@@ -380,7 +380,7 @@ class AuditPhysicsTool(BaseTool):
                 check=True
             )
             
-            pvi_file = "scratch/pvi_data.json"
+            pvi_file = "scratch/data/pvi_data.json"
             if os.path.exists(pvi_file):
                 with open(pvi_file, "r") as f:
                     data = json.load(f)
@@ -391,7 +391,7 @@ class AuditPhysicsTool(BaseTool):
                     f"El script de Julia finalizó correctamente. Los datos de divergencia se exportaron a {pvi_file}."
                 )
             else:
-                return f"Auditoría finalizada, pero no se encontró scratch/pvi_data.json. Salida:\n{process.stdout}"
+                return f"Auditoría finalizada, pero no se encontró scratch/data/pvi_data.json. Salida:\n{process.stdout}"
         except subprocess.CalledProcessError as e:
             return f"Error ejecutando verify_physics.jl: {e.stderr}\nStdout:\n{e.stdout}"
         except Exception as e:

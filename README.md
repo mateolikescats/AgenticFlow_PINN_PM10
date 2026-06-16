@@ -143,11 +143,29 @@ Asegúrese de tener Julia `1.10+` instalado.
 julia init_julia.jl
 ```
 *Nota: La primera instalación descargará y compilará el stack científico de SciML (NeuralPDE, Optimization), lo que puede tomar entre 5 y 10 minutos.*
-### 3. Pre-acondicionamiento
-Para probar el pre-acondicionamiento interpolativo de la red neuronal:
+### 3. Estructura de Directorios
+
+El proyecto cuenta con una separación clara para mantener las buenas prácticas:
+* `data/`: Almacena todos los archivos JSON de datos crudos, preprocesados y puntos de entrada/salida (`datos_oficiales_pm25.json`, `pvi_data.json`, etc.).
+* `models/`: Contiene los pesos, checkpoints y configuraciones de la red neuronal (`modelo_pinn.jld2`, `pinn_config.json`).
+* `src/`: Lógica principal del proyecto separada por dominios (`agents/`, `pinn/`, `data/`, `visualization/`).
+* `reporte/`: Almacena los resultados de la orquestación (reporte en LaTeX/PDF) y visualizaciones clave generadas de cara al usuario.
+* `scripts/`: Scripts utilitarios como `run_full_pipeline.ps1`.
+
+### 4. Flujo de Ejecución y Forma de Uso Recomendada
+
+La forma recomendada de abordar el problema es correr el flujo principal y posteriormente examinar las visualizaciones en conjunto con el reporte generado por los agentes LLM.
+
+**Paso 1:** Entrenar el modelo pre-acondicionado interpolativo con el que los agentes van a razonar:
 ```bash
 julia src/pinn/train_interpolative.jl
 ```
+
+**Paso 2:** Generar el mapa dinámico 3D de validación:
+```bash
+python src/visualization/generate_interactive_map.py
+```
+> **Herramienta Complementaria**: El mapa interactivo 3D (`reporte/mapa_3d_interactivo.html`) es una pieza central que **se recomienda utilizar a la par del análisis forense generado por los agentes** (guardado en la misma carpeta `reporte/`). Mientras los agentes MLOps formulan conclusiones y analizan métricas, el mapa interactivo permite a un humano explorar visualmente las predicciones espaciales, los focos de contaminación PM2.5 y las variables de elevación para realizar una validación experta integral.
 
 ---
 *Desarrollado como proyecto de Aprendizaje Automático.*

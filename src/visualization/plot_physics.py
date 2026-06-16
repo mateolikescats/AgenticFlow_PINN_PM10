@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 os.makedirs("reporte", exist_ok=True)
 
 def plot_convergence():
-    csv_path = "scratch/historial_perdidas.txt"
+    csv_path = "../data/historial_perdidas.txt"
     if not os.path.exists(csv_path):
         print(f"[WARNING] No se encontró {csv_path}. Omitiendo gráfico de convergencia.")
         return
@@ -69,7 +69,7 @@ def plot_convergence():
     print(f"[OK] Gráfico de convergencia guardado en {output_img}")
 
 def plot_pvi():
-    json_path = "scratch/pvi_data.json"
+    json_path = "scratch/data/pvi_data.json"
     if not os.path.exists(json_path):
         print(f"[WARNING] No se encontró {json_path}. Omitiendo gráfico de divergencia.")
         return

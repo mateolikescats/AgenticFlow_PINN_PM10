@@ -4,7 +4,7 @@ include("AdvectionDiffusion.jl")
 using .AdvectionDiffusion
 using NeuralPDE, ModelingToolkit, JLD2, ComponentArrays, Lux, JSON
 
-function verify_physics(model_path::String="modelo_pinn.jld2")
+function verify_physics(model_path::String="models/modelo_pinn.jld2")
     println("==== Auditoría de Física Real (PVI y Divergencia) ====")
     
     if !isfile(model_path)
@@ -26,15 +26,15 @@ function verify_physics(model_path::String="modelo_pinn.jld2")
 
     # 3. Construir la grilla de evaluación 3D alineada con las predicciones
     t_val = 0.5
-    if isfile("input_points.json")
+    if isfile("data/input_points.json")
         try
-            inputs = JSON.parsefile("input_points.json")
+            inputs = JSON.parsefile("data/input_points.json")
             if !isempty(inputs)
                 t_val = maximum([Float64(d["timestamp"]) for d in inputs])
                 println("Alineando auditoría física con el t de las últimas predicciones (t_val = $t_val)")
             end
         catch e
-            println("No se pudo leer input_points.json, usando t_val = 0.5 de fallback. Error: $e")
+            println("No se pudo leer data/input_points.json, usando t_val = 0.5 de fallback. Error: $e")
         end
     end
 
@@ -127,7 +127,7 @@ function verify_physics(model_path::String="modelo_pinn.jld2")
         "S" => collect(S_base)
     )
 
-    out_file = "scratch/pvi_data.json"
+    out_file = "scratch/data/pvi_data.json"
     open(out_file, "w") do f
         JSON.print(f, results)
     end

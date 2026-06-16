@@ -18,7 +18,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # 3. Generate plots
 Write-Host "Step 3: Generating loss curves and PVI maps in Python..."
-python scratch/plot_physics.py
+python src/visualization/plot_physics.py
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Python plotting failed!"
     exit 1
@@ -33,7 +33,7 @@ cd ..
 
 # 5. Git commit and push
 Write-Host "Step 5: Staging, committing, and pushing to origin/cristian..."
-git add .gitignore Project.toml README.md pesos_pinn_boussinesq.json pinn_config.json modelo_pinn.jld2
+git add .gitignore Project.toml README.md models/pesos_pinn_boussinesq.json models/pinn_config.json models/modelo_pinn.jld2
 git add reporte/reporte_final_ejecucion.pdf reporte/reporte_final_ejecucion.tex reporte/curvas_convergencia.png reporte/mapa_divergencia_pvi.png
 git add src/pinn/train_interpolative.jl
 git commit -m "merge: training on real data completed, PVI audited, and PDF report compiled"

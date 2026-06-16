@@ -110,22 +110,22 @@ function load_processed_data(pm_path::String, wind_path::String)
     return final_pm_data
 end
 
-function train_interpolative(pm_path::String="datos_oficiales_pm25.json", wind_path::String="datos_meteorologicos_viento.json")
+function train_interpolative(pm_path::String="data/datos_oficiales_pm25.json", wind_path::String="data/datos_meteorologicos_viento.json")
     println("==== Iniciando Fase Interpolativa PINN Termodinámica ====")
     
     # Leer hiperparámetros si existen (inyectados por el Agente Python)
     epochs = 10000
     learning_rate = 0.025
     lbfgs_iters = 3000
-    if isfile("pinn_config.json")
+    if isfile("models/pinn_config.json")
         try
-            config = JSON.parsefile("pinn_config.json")
+            config = JSON.parsefile("models/pinn_config.json")
             epochs = get(config, "epochs", 100)
             learning_rate = get(config, "learning_rate", 0.01)
             lbfgs_iters = get(config, "lbfgs_iters", 300)
             println("Configuración recibida del Agente: Epochs=$epochs, LR=$learning_rate, L-BFGS-Iters=$lbfgs_iters")
         catch
-            println("Error leyendo pinn_config.json, usando valores por defecto.")
+            println("Error leyendo models/pinn_config.json, usando valores por defecto.")
         end
     end
 
@@ -306,7 +306,7 @@ function train_interpolative(pm_path::String="datos_oficiales_pm25.json", wind_p
     sym_prob = NeuralPDE.symbolic_discretize(pdesys, discretization)
 
     # 6b. Manejo de checkpoints para reanudación de entrenamiento
-    checkpoint_file = abspath("scratch/modelo_pinn_checkpoint.jld2")
+    checkpoint_file = abspath("models/modelo_pinn_checkpoint.jld2")
     u0 = prob.u0
     epoch_count = 0
     if isfile(checkpoint_file)
@@ -325,14 +325,14 @@ function train_interpolative(pm_path::String="datos_oficiales_pm25.json", wind_p
     prob = Optimization.remake(prob, u0=u0)
 
     # Crear/limpiar el archivo de historial de pérdidas (solo si no hay checkpoint)
-    hist_file = abspath("scratch/historial_perdidas.txt")
+    hist_file = abspath("data/historial_perdidas.txt")
     if epoch_count == 0
         try
             open(hist_file, "w") do f
                 write(f, "epoch,total_loss,pde_loss,bc_loss,data_loss,val_loss,val_u,val_T,val_v,stage\n")
             end
         catch e
-            println("⚠️ No se pudo crear scratch/historial_perdidas.txt: ", e)
+            println("⚠️ No se pudo crear data/historial_perdidas.txt: ", e)
         end
     end
 
@@ -417,12 +417,12 @@ function train_interpolative(pm_path::String="datos_oficiales_pm25.json", wind_p
     end
 
     println("Exportando metadatos y pesos reales acoplados...")
-    open("pesos_pinn_boussinesq.json", "w") do f
+    open("models/pesos_pinn_boussinesq.json", "w") do f
         JSON.print(f, Dict("loss" => res2.objective, "info" => "Pesos exportados en formato binario JLD2."))
     end
 
     # Exportar los pesos reales de las 7 redes usando JLD2 para la posterior Inferencia
-    @save "modelo_pinn.jld2" theta = res2.u
+    @save "models/modelo_pinn.jld2" theta = res2.u
 
     println("¡Entrenamiento y modelo exportados exitosamente!")
 end
