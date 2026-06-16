@@ -57,7 +57,7 @@ function is_in_valley_floor(lon::Float64, lat::Float64)
     return abs(lon - center_lon) <= 0.024
 end
 
-function run_prediction(input_path::String="input_points.json", output_path::String="output_predictions.json", model_path::String="modelo_pinn.jld2")
+function run_prediction(input_path::String="data/input_points.json", output_path::String="data/output_predictions.json", model_path::String="models/modelo_pinn.jld2")
     println("==== Predictor Standalone de la iPINN ====")
     
     # 1. Verificar existencia del modelo entrenado
@@ -566,7 +566,7 @@ function run_prediction(input_path::String="input_points.json", output_path::Str
         ))
     end
     
-    sources_path = "output_sources.json"
+    sources_path = "data/output_sources.json"
     open(sources_path, "w") do f
         JSON.print(f, hotspots_data, 4)
     end

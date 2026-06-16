@@ -40,14 +40,14 @@ def get_color_for_emision(val):
     return f"rgb({r},{g},{b})"
 
 def generate_3d_map():
-    predictions_path = "output_predictions.json"
-    sources_path = "output_sources.json"
+    predictions_path = "../data/output_predictions.json"
+    sources_path = "../data/output_sources.json"
     
     if not os.path.exists(predictions_path):
-        print("[ERROR] No se encontró output_predictions.json. Ejecuta primero predict.jl.")
+        print("[ERROR] No se encontró data/output_predictions.json. Ejecuta primero predict.jl.")
         return
     if not os.path.exists(sources_path):
-        print("[ERROR] No se encontró output_sources.json. Ejecuta primero predict.jl.")
+        print("[ERROR] No se encontró data/output_sources.json. Ejecuta primero predict.jl.")
         return
 
     with open(predictions_path, "r", encoding="utf-8") as f:
@@ -68,7 +68,7 @@ def generate_3d_map():
     data_loss_list = []
     val_loss_list = []
     
-    historial_path = "scratch/historial_perdidas.txt"
+    historial_path = "../data/historial_perdidas.txt"
     if os.path.exists(historial_path):
         try:
             hist_df = pd.read_csv(historial_path)
@@ -98,14 +98,14 @@ def generate_3d_map():
             print(f"[WARN] No se pudo leer historial_perdidas.txt: {e}")
 
     pvi_val = 0.0268 # valor de fallback
-    pvi_path = "scratch/pvi_data.json"
+    pvi_path = "scratch/data/pvi_data.json"
     if os.path.exists(pvi_path):
         try:
             with open(pvi_path, "r", encoding="utf-8") as pf:
                 pvi_data = json.load(pf)
                 pvi_val = pvi_data.get("pvi", pvi_val)
         except Exception as e:
-            print(f"[WARN] No se pudo leer pvi_data.json: {e}")
+            print(f"[WARN] No se pudo leer data/pvi_data.json: {e}")
 
     # 2. Generar Receptores GeoJSON (Estaciones SIATA)
     stations_features = []
@@ -2877,7 +2877,7 @@ def generate_3d_map():
                   .replace("{latest_val_loss}", f"{latest_metrics['val_loss']:.5f}")
                   .replace("{latest_pvi}", f"{pvi_val:.6f}"))
 
-    output_html = "reporte/mapa_3d_interactivo.html"
+    output_html = "../reporte/mapa_3d_interactivo.html"
     os.makedirs(os.path.dirname(output_html), exist_ok=True)
     with open(output_html, "w", encoding="utf-8") as f:
         f.write(final_html)

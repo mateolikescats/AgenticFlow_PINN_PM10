@@ -19,8 +19,8 @@ def run_realtime_pipeline():
     scraper = SiataOfficialNetwork()
     scraper.run_pipeline()
 
-    if not os.path.exists("datos_oficiales_pm25.json"):
-        print("[ERROR] No se pudo generar datos_oficiales_pm25.json. Abortando.")
+    if not os.path.exists("data/datos_oficiales_pm25.json"):
+        print("[ERROR] No se pudo generar data/datos_oficiales_pm25.json. Abortando.")
         return
 
     # 2. Ejecutar el Preprocesador para alinear, limpiar y escalar
@@ -31,15 +31,15 @@ def run_realtime_pipeline():
         print(f"[ERROR] Ejecutando el preprocesador: {e}")
         return
 
-    if not os.path.exists("datos_siata_temporal.json"):
-        print("[ERROR] No se pudo generar datos_siata_temporal.json. Abortando.")
+    if not os.path.exists("data/datos_siata_temporal.json"):
+        print("[ERROR] No se pudo generar data/datos_siata_temporal.json. Abortando.")
         return
 
     # 3. Filtrar datos de las últimas 48 horas de registros disponibles
     print("\n[PASO 3] Filtrando mediciones correspondientes a las últimas 48 horas...")
     try:
         # Cargar los datos oficiales crudos para obtener las marcas de tiempo reales (Unix timestamp)
-        with open("datos_oficiales_pm25.json", "r", encoding="utf-8") as f:
+        with open("data/datos_oficiales_pm25.json", "r", encoding="utf-8") as f:
             raw_data = json.load(f)
         df_raw = pd.DataFrame(raw_data)
 
@@ -62,7 +62,7 @@ def run_realtime_pipeline():
             df_raw_latest = df_raw.sort_values(by="timestamp", ascending=False).head(10)
 
         # Cargar datos preprocesados para obtener la elevación real por ID de estación
-        with open("datos_siata_temporal.json", "r", encoding="utf-8") as f:
+        with open("data/datos_siata_temporal.json", "r", encoding="utf-8") as f:
             processed_data = json.load(f)
         df_processed = pd.DataFrame(processed_data)
 
@@ -73,7 +73,7 @@ def run_realtime_pipeline():
         df_raw_latest_unique = df_raw_latest.sort_values(by="timestamp").drop_duplicates(subset=["id"], keep="last")
         print(f"Estaciones activas únicas identificadas: {len(df_raw_latest_unique)}")
 
-        # 4. Generar input_points.json para predict.jl
+        # 4. Generar data/input_points.json para predict.jl
         input_points = []
         for _, row in df_raw_latest_unique.iterrows():
             st_id = row["id"]
@@ -90,9 +90,9 @@ def run_realtime_pipeline():
                 "timestamp": float(t_scaled)
             })
 
-        with open("input_points.json", "w") as f:
+        with open("data/input_points.json", "w") as f:
             json.dump(input_points, f, indent=4)
-        print("[OK] Archivo 'input_points.json' generado con éxito con las coordenadas de las estaciones.")
+        print("[OK] Archivo 'data/input_points.json' generado con éxito con las coordenadas de las estaciones.")
 
     except Exception as e:
         print(f"[ERROR] Procesando filtros de tiempo y coordenadas: {e}")
@@ -101,14 +101,14 @@ def run_realtime_pipeline():
     # 5. Ejecutar la inferencia de la iPINN en Julia
     print("\n[PASO 4] Ejecutando predict.jl en Julia para inferir emisiones y vientos...")
     try:
-        subprocess.run(["julia", "predict.jl"], check=True)
+        subprocess.run(["julia", "src/inference/predict.jl"], check=True)
     except subprocess.CalledProcessError as e:
         print(f"[ERROR] Ejecutando la predicción en Julia: {e}")
         return
 
     # 6. Mostrar resumen de resultados
-    if os.path.exists("output_predictions.json"):
-        with open("output_predictions.json", "r") as f:
+    if os.path.exists("data/output_predictions.json"):
+        with open("data/output_predictions.json", "r") as f:
             preds = json.load(f)
         print("\n======================================================================")
         print("RESUMEN DE PREDICCIONES GENERADAS EN TIEMPO REAL:")
@@ -118,10 +118,10 @@ def run_realtime_pipeline():
             print(f"  * PM2.5 Estimado: {p['pred_pm25_ug_m3']:.2f} ug/m3")
             print(f"  * Viento Estimado: [{p['pred_viento_vx_m_s']:.2f}, {p['pred_viento_vy_m_s']:.2f}] m/s")
             print(f"  * Emision Originada (S): {p['pred_emision_S_ug_m3_s']:.6f} ug/(m3*s)")
-        print(f"\n... y {len(preds) - 5} predicciones mas. Resultados completos en 'output_predictions.json'.")
+        print(f"\n... y {len(preds) - 5} predicciones mas. Resultados completos en 'data/output_predictions.json'.")
         print("======================================================================")
     else:
-        print("[ERROR] No se encontró output_predictions.json.")
+        print("[ERROR] No se encontró data/output_predictions.json.")
 
 if __name__ == "__main__":
     run_realtime_pipeline()
