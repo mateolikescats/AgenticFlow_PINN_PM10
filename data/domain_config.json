@@ -1,0 +1,10 @@
+{
+    "lat_min": 6.0,
+    "lat_max": 6.45,
+    "lon_min": -75.7,
+    "lon_max": -75.3,
+    "elev_min": 1400.0,
+    "elev_max": 3000.0,
+    "conc_max": 100.0,
+    "wind_max": 10.0
+}

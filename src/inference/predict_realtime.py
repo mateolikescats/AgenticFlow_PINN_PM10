@@ -4,8 +4,8 @@ import json
 import subprocess
 import pandas as pd
 
-# Asegurar que podemos importar desde src
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Asegurar que podemos importar desde la raíz del proyecto
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.data.siata_scraper import SiataOfficialNetwork
 

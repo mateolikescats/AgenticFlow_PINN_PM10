@@ -28,10 +28,14 @@ readpf
 read_pdf.py
 scratch_siata.py
 
-# Archivos de datos espaciotemporales pesados
+# Archivos de datos espaciotemporales pesados (raíz y data/)
 datos_meteorologicos_viento.json
 datos_oficiales_pm25.json
 datos_pinn_pm25.json
 datos_siata_temporal.json
 datos_siata.json
+data/datos_oficiales_pm25.json
+data/datos_oficiales_viento.json
+data/datos_siata_temporal.json
+data/datos_meteorologicos_viento.json
 

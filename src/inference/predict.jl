@@ -1,8 +1,30 @@
 using Pkg
 Pkg.activate(".")
-include("src/pinn/AdvectionDiffusion.jl")
-using .AdvectionDiffusion
-using NeuralPDE, ModelingToolkit, JLD2, ComponentArrays, Lux, JSON
+using JLD2, ComponentArrays, Lux, JSON, Random
+
+# Estructura ligera para evaluar redes Lux de forma óptima sin compilación simbólica
+struct LuxPhi
+    chain::Lux.Chain
+    state::NamedTuple
+end
+(lp::LuxPhi)(pts, θ) = first(Lux.apply(lp.chain, pts, θ, lp.state))
+
+# Arquitectura Lux copiada localmente para evitar cargar la pesada librería NeuralPDE e incompresibilidad
+function build_multi_pinn()
+    make_net = () -> Lux.Chain(
+        Lux.Dense(4, 32, Lux.tanh),
+        Lux.Dense(32, 32, Lux.tanh),
+        Lux.Dense(32, 32, Lux.tanh),
+        Lux.Dense(32, 1)
+    )
+    net_s = Lux.Chain(
+        Lux.Dense(4, 32, Lux.tanh),
+        Lux.Dense(32, 32, Lux.tanh),
+        Lux.Dense(32, 32, Lux.tanh),
+        Lux.Dense(32, 1, Lux.softplus)
+    )
+    return [make_net(), make_net(), make_net(), make_net(), make_net(), make_net(), net_s]
+end
 
 struct GridPoint
     lon::Float64
@@ -85,11 +107,16 @@ function run_prediction(input_path::String="data/input_points.json", output_path
     N = length(inputs)
     println("Procesando $N puntos de entrada...")
 
-    # 4. Adimensionalizar coordenadas (Idéntico al Preprocesamiento)
-    # Bounds del Valle de Aburrá
-    lat_min, lat_max = 6.0, 6.45
-    lon_min, lon_max = -75.7, -75.3
-    elev_min, elev_max = 1400.0, 3000.0
+    # 4. Cargar límites y constantes del dominio unificado
+    config = JSON.parsefile("data/domain_config.json")
+    lat_min = Float64(config["lat_min"])
+    lat_max = Float64(config["lat_max"])
+    lon_min = Float64(config["lon_min"])
+    lon_max = Float64(config["lon_max"])
+    elev_min = Float64(config["elev_min"])
+    elev_max = Float64(config["elev_max"])
+    conc_max = Float64(config["conc_max"])
+    wind_max = Float64(config["wind_max"])
 
     pts = Matrix{Float64}(undef, 4, N)
     for i in 1:N
@@ -111,17 +138,14 @@ function run_prediction(input_path::String="data/input_points.json", output_path
         pts[4, i] = t_val
     end
 
-    # 5. Recrear arquitectura PINN y cargar pesos
+    # 5. Inicializar redes neuronales y cargar pesos de forma óptima sin compilación simbólica
     println("Inicializando redes neuronales...")
-    pdesys, _ = get_boussinesq_pde_system()
     chains = build_multi_pinn()
-    strategy = QuasiRandomTraining(128; sampling_alg=ImportanceSampler())
-    adaptive_strategy = GradientScaleAdaptiveLoss(100)
-    discretization = PhysicsInformedNN(chains, strategy; additional_loss=(phi, θ, p)->0.0, weight_strategy=adaptive_strategy)
+    rng = Random.default_rng()
+    phi = [LuxPhi(chains[i], Lux.setup(rng, chains[i])[2]) for i in 1:length(chains)]
     
     println("Cargando pesos entrenados desde '$model_path'...")
     @load model_path theta
-    phi = discretization.phi
 
     # 6. Evaluar predicciones de las redes correspondientes
     println("Evaluando red neuronal de la PINN Inversa...")
@@ -178,16 +202,16 @@ function run_prediction(input_path::String="data/input_points.json", output_path
     for i in 1:N
         d = inputs[i]
         
-        # Des-escalar variables físicas (pm25_max = 100, viento_max = 10)
-        pm25_est = clamp(u_pred[i] * 100.0, 0.0, Inf)
+        # Des-escalar variables físicas usando constantes dinámicas
+        pm25_est = clamp(u_pred[i] * conc_max, 0.0, Inf)
         # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
-        vx_est = -vx_pred[i] * 10.0
-        vy_est = -vy_pred[i] * 10.0
-        vz_est = vz_pred[i] * 10.0
+        vx_est = -vx_pred[i] * wind_max
+        vy_est = -vy_pred[i] * wind_max
+        vz_est = vz_pred[i] * wind_max
         
         # El término de emisión S (fuente predicha de PM2.5 por la PINN Inversa)
         # S_pred está en unidades adimensionales por segundo. Lo des-escalamos a ug/(m3 * s)
-        emision_est = S_pred[i] * (100.0 / 3600.0) # Concentracion_max / Tiempo_max
+        emision_est = S_pred[i] * (conc_max / 3600.0) # Concentracion_max / Tiempo_max
 
         push!(output_data, Dict(
             "latitud" => d["latitud"],
@@ -242,14 +266,14 @@ function run_prediction(input_path::String="data/input_points.json", output_path
         pt = reshape([x_scaled, y_scaled, z_scaled, t_scaled], 4, 1)
         
         u_val = phi[1](pt, theta.depvar.u)[1]
-        pm25_est = clamp(u_val * 100.0, 0.0, Inf)
+        pm25_est = clamp(u_val * conc_max, 0.0, Inf)
         
         S_val = phi[7](pt, theta.depvar.S)[1]
-        emision_est = S_val * (100.0 / 3600.0)
+        emision_est = S_val * (conc_max / 3600.0)
         
         # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
-        vx_est = -phi[3](pt, theta.depvar.vx)[1] * 10.0
-        vy_est = -phi[4](pt, theta.depvar.vy)[1] * 10.0
+        vx_est = -phi[3](pt, theta.depvar.vx)[1] * wind_max
+        vy_est = -phi[4](pt, theta.depvar.vy)[1] * wind_max
         
         # Trayectoria
         x, y, z, t = x_scaled, y_scaled, z_scaled, 1.0
@@ -329,14 +353,14 @@ function run_prediction(input_path::String="data/input_points.json", output_path
     
     # Evaluar red de emisión S
     S_grid = phi[7](grid_pts, theta.depvar.S)
-    emision_grid = S_grid * (100.0 / 3600.0)
+    emision_grid = S_grid * (conc_max / 3600.0)
     
     # Evaluar red de concentración u
-    u_grid = phi[1](grid_pts, theta.depvar.u) * 100.0
+    u_grid = phi[1](grid_pts, theta.depvar.u) * conc_max
     
     # Evaluar vientos
-    vx_grid = phi[3](grid_pts, theta.depvar.vx) * 10.0
-    vy_grid = phi[4](grid_pts, theta.depvar.vy) * 10.0
+    vx_grid = phi[3](grid_pts, theta.depvar.vx) * wind_max
+    vy_grid = phi[4](grid_pts, theta.depvar.vy) * wind_max
     
     # Estructurar puntos filtrando por cercanía a estaciones (huella del sensor)
     # para evitar extrapolar en los límites extremos del recuadro
@@ -463,9 +487,9 @@ function run_prediction(input_path::String="data/input_points.json", output_path
         
         # Evaluar emisión y viento refinados continuamente
         pt_opt = reshape([x_opt, y_opt, z_opt, 1.0], 4, 1)
-        S_opt = phi[7](pt_opt, theta.depvar.S)[1] * (100.0 / 3600.0)
-        vx_opt = phi[3](pt_opt, theta.depvar.vx)[1] * 10.0
-        vy_opt = phi[4](pt_opt, theta.depvar.vy)[1] * 10.0
+        S_opt = phi[7](pt_opt, theta.depvar.S)[1] * (conc_max / 3600.0)
+        vx_opt = phi[3](pt_opt, theta.depvar.vx)[1] * wind_max
+        vy_opt = phi[4](pt_opt, theta.depvar.vy)[1] * wind_max
         
         push!(refined_candidates, GridPoint(
             lon_opt, lat_opt, elev_opt,
@@ -525,7 +549,7 @@ function run_prediction(input_path::String="data/input_points.json", output_path
         # Consultar la concentración exacta en el hotspot
         pt = reshape([hs.x, hs.y, hs.z, 1.0], 4, 1)
         u_val = phi[1](pt, theta.depvar.u)[1]
-        pm25_est = clamp(u_val * 100.0, 0.0, Inf)
+        pm25_est = clamp(u_val * conc_max, 0.0, Inf)
         
         # Trayectoria
         x, y, z, t = hs.x, hs.y, hs.z, 1.0

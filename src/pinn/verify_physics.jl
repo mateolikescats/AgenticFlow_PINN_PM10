@@ -1,8 +1,30 @@
 using Pkg
 Pkg.activate(".")
-include("AdvectionDiffusion.jl")
-using .AdvectionDiffusion
-using NeuralPDE, ModelingToolkit, JLD2, ComponentArrays, Lux, JSON
+using JLD2, ComponentArrays, Lux, JSON, Random
+
+# Estructura ligera para evaluar redes Lux de forma óptima sin compilación simbólica
+struct LuxPhi
+    chain::Lux.Chain
+    state::NamedTuple
+end
+(lp::LuxPhi)(pts, θ) = first(Lux.apply(lp.chain, pts, θ, lp.state))
+
+# Arquitectura Lux copiada localmente para evitar cargar la pesada librería NeuralPDE
+function build_multi_pinn()
+    make_net = () -> Lux.Chain(
+        Lux.Dense(4, 32, Lux.tanh),
+        Lux.Dense(32, 32, Lux.tanh),
+        Lux.Dense(32, 32, Lux.tanh),
+        Lux.Dense(32, 1)
+    )
+    net_s = Lux.Chain(
+        Lux.Dense(4, 32, Lux.tanh),
+        Lux.Dense(32, 32, Lux.tanh),
+        Lux.Dense(32, 32, Lux.tanh),
+        Lux.Dense(32, 1, Lux.softplus)
+    )
+    return [make_net(), make_net(), make_net(), make_net(), make_net(), make_net(), net_s]
+end
 
 function verify_physics(model_path::String="models/modelo_pinn.jld2")
     println("==== Auditoría de Física Real (PVI y Divergencia) ====")
@@ -12,17 +34,14 @@ function verify_physics(model_path::String="models/modelo_pinn.jld2")
         return
     end
 
-    # 1. Recrear el sistema y la PINN
-    pdesys, (x, y, z, t, u, T, vx, vy, vz, P, S) = get_boussinesq_pde_system()
+    # 1. Recrear la estructura de la PINN de forma ligera sin compilación simbólica
     chains = build_multi_pinn()
-    strategy = QuasiRandomTraining(128; sampling_alg=ImportanceSampler())
-    adaptive_strategy = GradientScaleAdaptiveLoss(100)
-    discretization = PhysicsInformedNN(chains, strategy; additional_loss=(phi, θ, p)->0.0, weight_strategy=adaptive_strategy)
+    rng = Random.default_rng()
+    phi = [LuxPhi(chains[i], Lux.setup(rng, chains[i])[2]) for i in 1:length(chains)]
     
     # 2. Cargar parámetros entrenados
     println("Cargando pesos del modelo...")
     @load model_path theta
-    phi = discretization.phi
 
     # 3. Construir la grilla de evaluación 3D alineada con las predicciones
     t_val = 0.5
@@ -127,7 +146,7 @@ function verify_physics(model_path::String="models/modelo_pinn.jld2")
         "S" => collect(S_base)
     )
 
-    out_file = "scratch/data/pvi_data.json"
+    out_file = "data/pvi_data.json"
     open(out_file, "w") do f
         JSON.print(f, results)
     end

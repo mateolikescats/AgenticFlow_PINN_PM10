@@ -1,32 +1,8 @@
 [
     {
-        "latitud": 6.4369602,
-        "longitud": -75.3303986,
-        "elevacion": 1313.0,
-        "timestamp": 1.0
-    },
-    {
-        "latitud": 6.2218938,
-        "longitud": -75.6106033,
-        "elevacion": 1582.0,
-        "timestamp": 1.0
-    },
-    {
-        "latitud": 6.2589092,
-        "longitud": -75.5482635,
-        "elevacion": 1681.0,
-        "timestamp": 1.0
-    },
-    {
-        "latitud": 6.1686831,
-        "longitud": -75.5819702,
-        "elevacion": 1584.0,
-        "timestamp": 1.0
-    },
-    {
-        "latitud": 6.2904806,
-        "longitud": -75.5555191,
-        "elevacion": 1553.0,
+        "latitud": 6.1998701,
+        "longitud": -75.5609512,
+        "elevacion": 1678.0,
         "timestamp": 1.0
     },
     {
@@ -36,39 +12,9 @@
         "timestamp": 1.0
     },
     {
-        "latitud": 6.3375502,
-        "longitud": -75.5678024,
-        "elevacion": 1506.0,
-        "timestamp": 1.0
-    },
-    {
-        "latitud": 6.2778502,
-        "longitud": -75.6364288,
-        "elevacion": 1850.0,
-        "timestamp": 1.0
-    },
-    {
-        "latitud": 6.3453598,
-        "longitud": -75.5047531,
-        "elevacion": 1455.0,
-        "timestamp": 1.0
-    },
-    {
-        "latitud": 6.1998701,
-        "longitud": -75.5609512,
-        "elevacion": 1678.0,
-        "timestamp": 1.0
-    },
-    {
-        "latitud": 6.2372341,
-        "longitud": -75.610466,
-        "elevacion": 1608.0,
-        "timestamp": 1.0
-    },
-    {
-        "latitud": 6.0930777,
-        "longitud": -75.637764,
-        "elevacion": 1759.0,
+        "latitud": 6.2525611,
+        "longitud": -75.5695801,
+        "elevacion": 1479.0,
         "timestamp": 1.0
     },
     {
@@ -78,9 +24,21 @@
         "timestamp": 1.0
     },
     {
-        "latitud": 6.1825418,
-        "longitud": -75.5506363,
-        "elevacion": 1950.0,
+        "latitud": 6.4369602,
+        "longitud": -75.3303986,
+        "elevacion": 1313.0,
+        "timestamp": 1.0
+    },
+    {
+        "latitud": 6.2589092,
+        "longitud": -75.5482635,
+        "elevacion": 1681.0,
+        "timestamp": 1.0
+    },
+    {
+        "latitud": 6.3375502,
+        "longitud": -75.5678024,
+        "elevacion": 1506.0,
         "timestamp": 1.0
     },
     {
@@ -90,9 +48,45 @@
         "timestamp": 1.0
     },
     {
+        "latitud": 6.0930777,
+        "longitud": -75.637764,
+        "elevacion": 1759.0,
+        "timestamp": 1.0
+    },
+    {
+        "latitud": 6.2218938,
+        "longitud": -75.6106033,
+        "elevacion": 1582.0,
+        "timestamp": 1.0
+    },
+    {
+        "latitud": 6.2904806,
+        "longitud": -75.5555191,
+        "elevacion": 1553.0,
+        "timestamp": 1.0
+    },
+    {
+        "latitud": 6.1825418,
+        "longitud": -75.5506363,
+        "elevacion": 1950.0,
+        "timestamp": 1.0
+    },
+    {
         "latitud": 6.1856666,
         "longitud": -75.5972061,
         "elevacion": 1532.0,
+        "timestamp": 1.0
+    },
+    {
+        "latitud": 6.1686831,
+        "longitud": -75.5819702,
+        "elevacion": 1584.0,
+        "timestamp": 1.0
+    },
+    {
+        "latitud": 6.3453598,
+        "longitud": -75.5047531,
+        "elevacion": 1455.0,
         "timestamp": 1.0
     },
     {
@@ -102,9 +96,15 @@
         "timestamp": 1.0
     },
     {
-        "latitud": 6.2525611,
-        "longitud": -75.5695801,
-        "elevacion": 1479.0,
+        "latitud": 6.2778502,
+        "longitud": -75.6364288,
+        "elevacion": 1850.0,
+        "timestamp": 1.0
+    },
+    {
+        "latitud": 6.2372341,
+        "longitud": -75.610466,
+        "elevacion": 1608.0,
         "timestamp": 1.0
     }
 ]
