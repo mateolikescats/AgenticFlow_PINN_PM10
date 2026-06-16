@@ -29,6 +29,10 @@ function load_data(filepath)
 end
 
 function load_processed_data(pm_path::String, wind_path::String)
+    # Cargar límites y constantes del dominio unificado
+    config = JSON.parsefile("data/domain_config.json")
+    conc_max = Float64(config["conc_max"])
+
     # 1. Cargar datos de viento y construir diccionario de coordenadas de estaciones
     wind_data = load_data(wind_path)
     station_coords = Dict{Int, Dict{String, Float64}}()
@@ -88,7 +92,7 @@ function load_processed_data(pm_path::String, wind_path::String)
         coords = station_coords[id]
         
         t_scaled = t_range > 0 ? (d["timestamp"] - t_min) / t_range : 0.0
-        u_scaled = clamp(d["pm25"] / 100.0, 0.0, 1.0)
+        u_scaled = clamp(d["pm25"] / conc_max, 0.0, 1.0)
         T_scaled = 2.0 * coords["z"] - 1.0
         
         push!(final_pm_data, Dict(

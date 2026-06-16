@@ -7,8 +7,7 @@ class PINNPreprocessor:
     Implementa la adimensionalización estricta para evitar gradientes patológicos
     durante la optimización del problema inverso (Advección-Difusión-Reacción).
     """
-    def __init__(self, spatial_bounds: tuple, time_max: float, conc_max: float):
-
+    def __init__(self, spatial_bounds: tuple, time_max: float, conc_max: float, elev_bounds: tuple = (1400.0, 3000.0), wind_max: float = 10.0):
         #? spatial bounds: establece un rectángulo geográfico de referencia para escalar latitudes y longitudes.
         #? time_max: define el tiempo máximo esperado para escalar la variable temporal t a [0, 1].
         #? conc_max: define la concentración máxima esperada de PM2.5/PM10 para escalar la variable de concentración a [0, 1]. Valores negativos se mapearán a 0.
@@ -16,15 +15,14 @@ class PINNPreprocessor:
         :param spatial_bounds: (min_lat, max_lat, min_lon, max_lon)
         :param time_max: tiempo máximo en segundos (o horas) para escalar t a [0, 1]
         :param conc_max: concentración máxima esperada (ug/m3) para PM2.5/PM10
+        :param elev_bounds: (min_elev, max_elev)
+        :param wind_max: velocidad máxima esperada del viento
         """
         self.min_lat, self.max_lat, self.min_lon, self.max_lon = spatial_bounds
         self.time_max = time_max
         self.conc_max = conc_max
-        self.min_elev = 1400.0 # Aproximación baja del río Medellín
-        self.max_elev = 3000.0 # Aproximación de las montañas circundantes
-        
-        if len(spatial_bounds) > 4: # Por si el usuario pasa elev_bounds como kwargs luego
-            pass
+        self.min_elev, self.max_elev = elev_bounds
+        self.wind_max = wind_max
 
     def scale_spatial(self, lat: float, lon: float) -> tuple:
         #? Las coordenadas geográficas se adimensionalizan primero a [0, 1] usando un escalamiento Min-Max basado en los límites definidos.
@@ -188,9 +186,9 @@ class PINNPreprocessor:
         df_scaled['timestamp_rel'] = df_scaled['timestamp'] - time_min_ref
         df_scaled['t_scaled'] = df_scaled['timestamp_rel'].apply(self.scale_time)
         
-        # Escalar velocidades (viento máx = 10 m/s)
-        df_scaled['vx_scaled'] = df_scaled['vx'] / 10.0
-        df_scaled['vy_scaled'] = df_scaled['vy'] / 10.0
+        # Escalar velocidades
+        df_scaled['vx_scaled'] = df_scaled['vx'] / self.wind_max
+        df_scaled['vy_scaled'] = df_scaled['vy'] / self.wind_max
         
         # Mapear a nombres de columnas que Julia espera
         df_scaled['x'] = df_scaled['x_scaled']
@@ -207,9 +205,23 @@ if __name__ == "__main__":
     import os
     print("Iniciando preprocesamiento dimensional (x, y, z, t)...")
     
+    # Cargar límites y constantes del dominio unificado
+    config_path = "data/domain_config.json"
+    try:
+        with open(config_path, "r") as f:
+            config = json.load(f)
+    except Exception as e:
+        print(f"Error cargando {config_path}: {e}")
+        exit(1)
+        
+    spatial_bounds = (config["lat_min"], config["lat_max"], config["lon_min"], config["lon_max"])
+    elev_bounds = (config["elev_min"], config["elev_max"])
+    conc_max = config["conc_max"]
+    wind_max = config["wind_max"]
+    
     # 1. Cargar datos del scraper PM2.5 usando json nativo para evitar fallos de compresión
     try:
-        with open("datos_oficiales_pm25.json", "r", encoding="utf-8") as f:
+        with open("data/datos_oficiales_pm25.json", "r", encoding="utf-8") as f:
             data_pm = json.load(f)
         df_raw = pd.DataFrame(data_pm)
         print(f"Cargados {len(df_raw)} registros temporales de PM2.5.")
@@ -225,36 +237,31 @@ if __name__ == "__main__":
         cleaned_len = len(df_raw)
         print(f"Datos organizados y optimizados. Filas iniciales: {initial_len} -> Filas limpias: {cleaned_len} (Removidos: {initial_len - cleaned_len})")
     except Exception as e:
-        print("Error leyendo/organizando datos_oficiales_pm25.json:", e)
+        print("Error leyendo/organizando data/datos_oficiales_pm25.json:", e)
         exit(1)
         
-    # Limites del Valle de Aburrá aprox
-    spatial_bounds = (6.0, 6.45, -75.7, -75.3) # (min_lat, max_lat, min_lon, max_lon)
-    
     time_min = df_raw['timestamp'].min() if not df_raw.empty else 0.0
     time_max = df_raw['timestamp'].max() - time_min if not df_raw.empty else 1.0
     
     # Ajustamos timestamp a relativo desde el minimo para que empiece en 0
     if not df_raw.empty:
         df_raw['timestamp'] = df_raw['timestamp'] - time_min
-    
-    conc_max = 100.0 # ug/m3 de pm25 máximo esperado
-    
-    preprocessor = PINNPreprocessor(spatial_bounds, time_max, conc_max)
+        
+    preprocessor = PINNPreprocessor(spatial_bounds, time_max, conc_max, elev_bounds, wind_max)
     df_pinn = preprocessor.process_dataframe(df_raw)
     
     # Guardar en un nuevo archivo solo con las columnas procesadas para la PINN
     cols_to_save = ['id', 'x', 'y', 'z', 't', 'u', 'T', 'elevacion_real', 'pm25', 'latitud', 'longitud']
     df_final = df_pinn[cols_to_save].copy()
     
-    output_file = "datos_siata_temporal.json"
+    output_file = "data/datos_siata_temporal.json"
     df_final.to_json(output_file, orient='records', indent=4)
     print(f"Preprocesamiento exitoso. Datos listos guardados en '{output_file}'.")
     
     # 2. Cargar y procesar datos de viento si existen
-    if os.path.exists("datos_oficiales_viento.json"):
+    if os.path.exists("data/datos_oficiales_viento.json"):
         try:
-            with open("datos_oficiales_viento.json", "r", encoding="utf-8") as f:
+            with open("data/datos_oficiales_viento.json", "r", encoding="utf-8") as f:
                 data_wind = json.load(f)
             df_wind_raw = pd.DataFrame(data_wind)
             print(f"Cargados {len(df_wind_raw)} registros de viento.")
@@ -269,13 +276,13 @@ if __name__ == "__main__":
             cols_wind = ['id', 'x', 'y', 'z', 't', 'vx', 'vy', 'elevacion_real', 'latitud', 'longitud']
             df_wind_final = df_wind_processed[cols_wind].copy()
             
-            wind_output = "datos_meteorologicos_viento.json"
+            wind_output = "data/datos_meteorologicos_viento.json"
             df_wind_final.to_json(wind_output, orient='records', indent=4)
             print(f"Preprocesamiento de viento exitoso. Guardado en '{wind_output}'.")
         except Exception as e:
             print("Error preprocesando datos de viento:", e)
     else:
-        print("[WARN] datos_oficiales_viento.json no encontrado (portal down). Generando datos_meteorologicos_viento.json espacial y topográficamente consistentes para entrenamiento...")
+        print("[WARN] data/datos_oficiales_viento.json no encontrado (portal down). Generando data/datos_meteorologicos_viento.json espacial y topográficamente consistentes para entrenamiento...")
         try:
             # Obtener estaciones únicas de pm25 para ubicar los sensores meteorológicos simulados en los mismos puntos reales
             unique_stations = df_final[['id', 'x', 'y', 'z', 'elevacion_real', 'latitud', 'longitud']].drop_duplicates()
@@ -310,7 +317,7 @@ if __name__ == "__main__":
             # Ordenar y drop duplicates en viento simulado por coherencia
             df_wind_sim = df_wind_sim.drop_duplicates(subset=['id', 't'])
             df_wind_sim = df_wind_sim.sort_values(by=['t', 'id']).reset_index(drop=True)
-            wind_output = "datos_meteorologicos_viento.json"
+            wind_output = "data/datos_meteorologicos_viento.json"
             df_wind_sim.to_json(wind_output, orient='records', indent=4)
             print(f"[OK] Generación de viento simulado exitosa. {len(df_wind_sim)} registros guardados en '{wind_output}'.")
         except Exception as e:

@@ -170,7 +170,7 @@ class SiataOfficialNetwork:
         raw_pm25 = self.fetch_data(self.endpoint_pm25)
         if raw_pm25:
             df_pm25 = self.process_pm25_data(raw_pm25)
-            df_pm25.to_json("datos_oficiales_pm25.json", orient='records', indent=4)
+            df_pm25.to_json("data/datos_oficiales_pm25.json", orient='records', indent=4)
             print(f"[OK] Guardados {len(df_pm25)} sensores de PM2.5 Oficial.")
         else:
             print("[WARN] No se pudo obtener la red de Calidad de Aire oficial.")
@@ -192,7 +192,7 @@ class SiataOfficialNetwork:
                 
         if raw_wind:
             df_wind = self.process_wind_data(raw_wind)
-            df_wind.to_json("datos_oficiales_viento.json", orient='records', indent=4)
+            df_wind.to_json("data/datos_oficiales_viento.json", orient='records', indent=4)
             print(f"[OK] Guardados {len(df_wind)} sensores de viento Vaisala.")
         else:
             print("[WARN] No se pudo obtener la red de viento oficial en ninguno de los endpoints. Se usará el fallback de viento en Julia.")

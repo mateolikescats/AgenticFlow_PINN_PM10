@@ -43,13 +43,11 @@ class BayesianOptimizer:
         
         # Escribir configuración temporal (fijando 300 it. de L-BFGS para excelente precisión)
         config = {"epochs": epochs_int, "learning_rate": lr, "lbfgs_iters": 300}
-        with open("pinn_config.json", "w") as f:
+        with open("models/pinn_config.json", "w") as f:
             json.dump(config, f)
             
         try:
-            julia_path = r"C:\Users\arnod\AppData\Local\Programs\Julia-1.12.6\bin\julia.exe"
-            if not os.path.exists(julia_path):
-                julia_path = "julia"
+            julia_path = "julia"
             result = subprocess.run(
                 [julia_path, "--project=.", "src/pinn/train_interpolative.jl"],
                 capture_output=True,
@@ -64,14 +62,14 @@ class BayesianOptimizer:
                 return 1e6 # Retornar penalización alta en caso de error
                 
             # Leer pérdida resultante
-            if os.path.exists("pesos_pinn_boussinesq.json"):
-                with open("pesos_pinn_boussinesq.json", "r") as f:
+            if os.path.exists("models/pesos_pinn_boussinesq.json"):
+                with open("models/pesos_pinn_boussinesq.json", "r") as f:
                     data = json.load(f)
                     loss = float(data.get("loss", 1e6))
                     print(f"✅ Trial Completado con Éxito. Loss Resultante: {loss:.5f}")
                     return loss
             else:
-                print("⚠️ pesos_pinn_boussinesq.json no fue generado.")
+                print("⚠️ models/pesos_pinn_boussinesq.json no fue generado.")
                 return 1e6
         except subprocess.TimeoutExpired:
             print("⚠️ Timeout excedido en ejecución de Julia.")
@@ -160,7 +158,7 @@ class BayesianOptimizer:
         
         # Escribir la mejor configuración final para el entrenamiento definitivo
         best_config = {"epochs": best_epochs_int, "learning_rate": best_lr, "lbfgs_iters": 300}
-        with open("pinn_config.json", "w") as f:
+        with open("models/pinn_config.json", "w") as f:
             json.dump(best_config, f)
             
         return best_config
