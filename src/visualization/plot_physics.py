@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 os.makedirs("reporte", exist_ok=True)
 
 def plot_convergence():
-    csv_path = "../data/historial_perdidas.txt"
+    csv_path = "data/historial_perdidas.txt"
     if not os.path.exists(csv_path):
         print(f"[WARNING] No se encontró {csv_path}. Omitiendo gráfico de convergencia.")
         return
@@ -86,6 +86,9 @@ def plot_pvi():
     
     # Reconstruir array 3D
     div = np.array(data["divergence"]).reshape((nx, ny, nz))
+    # Celdas bajo el relieve del modelo (sin puntos de colocación) se ocultan: no tienen restricción física
+    if "atmosfera" in data:
+        div = np.where(np.array(data["atmosfera"]).reshape((nx, ny, nz)), div, np.nan)
     
     # Determinar cortes a graficar (z = 0.1, 0.5, 0.9)
     # Buscamos los índices en el vector z que estén más cerca de estos valores
@@ -102,9 +105,9 @@ def plot_pvi():
     fig, axes = plt.subplots(1, 3, figsize=(18, 5.5), dpi=150)
     
     # Encontrar límites simétricos para la divergencia para centrar la escala de colores en 0
-    max_val = max(np.max(np.abs(div[:, :, idx_bottom])), 
-                  np.max(np.abs(div[:, :, idx_mid])), 
-                  np.max(np.abs(div[:, :, idx_top])))
+    max_val = max(np.nanmax(np.abs(div[:, :, idx_bottom])),
+                  np.nanmax(np.abs(div[:, :, idx_mid])),
+                  np.nanmax(np.abs(div[:, :, idx_top])))
     # Evitar escala de cero
     max_val = max(max_val, 1e-4)
 
@@ -122,6 +125,7 @@ def plot_pvi():
             vmax=max_val
         )
         
+        ax.set_facecolor('#d4d4d4')
         ax.set_title(title, fontsize=12, fontweight='bold', pad=10)
         ax.set_xlabel('Ancho del Valle (x)', fontsize=10)
         if i == 0:
@@ -134,7 +138,9 @@ def plot_pvi():
     cbar = fig.colorbar(im, cax=cbar_ax)
     cbar.set_label('Divergencia del Viento ($\\nabla \\cdot \\vec{v}$)', fontsize=11, fontweight='bold', labelpad=15)
     
-    fig.suptitle(f"Auditoría Física: Campo de Divergencia del Viento 3D\nPhysics Violation Index (PVI) = {pvi:.6f} | Masa conservada si PVI ≈ 0", 
+    pvi_rel = data.get("pvi_relativo")
+    rel_txt = f" | PVI relativo = {pvi_rel:.2f}" if pvi_rel is not None else ""
+    fig.suptitle(f"Auditoría Física: Divergencia del Viento 3D en la atmósfera modelada (gris = bajo el relieve)\nPVI = {pvi:.4f}{rel_txt} | Masa conservada si PVI ≈ 0", 
                  fontsize=14, fontweight='bold', y=0.98)
 
     output_img = "reporte/mapa_divergencia_pvi.png"

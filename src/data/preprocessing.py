@@ -184,7 +184,8 @@ class PINNPreprocessor:
         
         # Escalar tiempo relativo al mínimo de PM2.5 para mantener sincronización
         df_scaled['timestamp_rel'] = df_scaled['timestamp'] - time_min_ref
-        df_scaled['t_scaled'] = df_scaled['timestamp_rel'].apply(self.scale_time)
+        # Lecturas de viento fuera de la ventana de PM2.5 se acotan al dominio temporal [0, 1]
+        df_scaled['t_scaled'] = df_scaled['timestamp_rel'].apply(self.scale_time).clip(0.0, 1.0)
         
         # Escalar velocidades
         df_scaled['vx_scaled'] = df_scaled['vx'] / self.wind_max
@@ -199,6 +200,19 @@ class PINNPreprocessor:
         df_scaled['vy'] = df_scaled['vy_scaled']
         
         return df_scaled
+
+def filtrar_geometria_modelo(df: pd.DataFrame, nombre: str) -> pd.DataFrame:
+    """
+    Descarta estaciones que el modelo no puede representar: en la franja de borde |x|, |y| > 0.9,
+    donde las condiciones de frontera imponen viento y concentración cero, o bajo el relieve
+    parabólico z < 0.4x² - 0.05 de AdvectionDiffusion.jl, donde no hay puntos de colocación.
+    Sus datos contradicen la física impuesta y generan gradientes espurios (divergencia).
+    """
+    dentro = (df['x'].abs() <= 0.9) & (df['y'].abs() <= 0.9) & (df['z'] >= 0.4 * df['x']**2 - 0.05)
+    excluidas = sorted(df.loc[~dentro, 'id'].unique().tolist())
+    if excluidas:
+        print(f"[INFO] {nombre}: excluidas {len(excluidas)} estaciones fuera de la geometría del modelo: {excluidas}")
+    return df[dentro].copy()
 
 if __name__ == "__main__":
     import json
@@ -234,6 +248,9 @@ if __name__ == "__main__":
         df_raw = df_raw.drop_duplicates(subset=['id', 'timestamp'])
         # Ordenar cronológicamente y por estación para estructurar matrices consistentes
         df_raw = df_raw.sort_values(by=['timestamp', 'id']).reset_index(drop=True)
+        # Descartar estaciones fuera del dominio Ω (quedarían fuera de [-1, 1] en x, y)
+        df_raw = df_raw[df_raw['latitud'].between(config["lat_min"], config["lat_max"]) &
+                        df_raw['longitud'].between(config["lon_min"], config["lon_max"])].reset_index(drop=True)
         cleaned_len = len(df_raw)
         print(f"Datos organizados y optimizados. Filas iniciales: {initial_len} -> Filas limpias: {cleaned_len} (Removidos: {initial_len - cleaned_len})")
     except Exception as e:
@@ -252,7 +269,7 @@ if __name__ == "__main__":
     
     # Guardar en un nuevo archivo solo con las columnas procesadas para la PINN
     cols_to_save = ['id', 'x', 'y', 'z', 't', 'u', 'T', 'elevacion_real', 'pm25', 'latitud', 'longitud']
-    df_final = df_pinn[cols_to_save].copy()
+    df_final = filtrar_geometria_modelo(df_pinn[cols_to_save], "PM2.5")
     
     output_file = "data/datos_siata_temporal.json"
     df_final.to_json(output_file, orient='records', indent=4)
@@ -270,11 +287,13 @@ if __name__ == "__main__":
             df_wind_raw = df_wind_raw.dropna(subset=['latitud', 'longitud', 'timestamp', 'vx', 'vy'])
             df_wind_raw = df_wind_raw.drop_duplicates(subset=['id', 'timestamp'])
             df_wind_raw = df_wind_raw.sort_values(by=['timestamp', 'id']).reset_index(drop=True)
+            df_wind_raw = df_wind_raw[df_wind_raw['latitud'].between(config["lat_min"], config["lat_max"]) &
+                                      df_wind_raw['longitud'].between(config["lon_min"], config["lon_max"])].reset_index(drop=True)
             
             df_wind_processed = preprocessor.process_wind_dataframe(df_wind_raw, time_min)
             
             cols_wind = ['id', 'x', 'y', 'z', 't', 'vx', 'vy', 'elevacion_real', 'latitud', 'longitud']
-            df_wind_final = df_wind_processed[cols_wind].copy()
+            df_wind_final = filtrar_geometria_modelo(df_wind_processed[cols_wind], "Viento")
             
             wind_output = "data/datos_meteorologicos_viento.json"
             df_wind_final.to_json(wind_output, orient='records', indent=4)

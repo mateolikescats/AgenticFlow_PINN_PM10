@@ -16,11 +16,6 @@ using JLD2 # Para guardar los pesos reales
 using Random
 using LineSearches
 
-function clean_wind_id(id_str::String)
-    clean_str = replace(id_str, "W-" => "")
-    return round(Int, parse(Float64, clean_str))
-end
-
 function load_data(filepath)
     if !isfile(filepath)
         error("❌ ERROR: El archivo de datos requerido '$filepath' no existe.")
@@ -28,93 +23,17 @@ function load_data(filepath)
     return JSON.parsefile(filepath)
 end
 
-function load_processed_data(pm_path::String, wind_path::String)
-    # Cargar límites y constantes del dominio unificado
-    config = JSON.parsefile("data/domain_config.json")
-    conc_max = Float64(config["conc_max"])
-
-    # 1. Cargar datos de viento y construir diccionario de coordenadas de estaciones
-    wind_data = load_data(wind_path)
-    station_coords = Dict{Int, Dict{String, Float64}}()
-
-    for d in wind_data
-        id_str = d["id"]
-        id_clean = clean_wind_id(id_str)
-        if !haskey(station_coords, id_clean)
-            station_coords[id_clean] = Dict(
-                "x" => Float64(d["x"]),
-                "y" => Float64(d["y"]),
-                "z" => Float64(d["z"]),
-                "elevacion_real" => Float64(d["elevacion_real"]),
-                "latitud" => Float64(d["latitud"]),
-                "longitud" => Float64(d["longitud"])
-            )
-        end
-    end
-
-    # 2. Cargar datos crudos de PM2.5 y eliminar duplicados/no coincidentes
-    pm_raw = load_data(pm_path)
-    seen_records = Set{Tuple{Int, Float64}}()
-    cleaned_pm = []
-
-    for d in pm_raw
-        id = round(Int, d["id"])
-        t_val = Float64(d["timestamp"])
-        pm_val = Float64(d["pm25"])
-        
-        # Evitar duplicados por estación y marca de tiempo
-        rec_key = (id, t_val)
-        if rec_key in seen_records
-            continue
-        end
-        
-        # Validar si la estación existe en la meteorología
-        if !haskey(station_coords, id)
-            continue
-        end
-        
-        push!(seen_records, rec_key)
-        push!(cleaned_pm, Dict("id" => id, "timestamp" => t_val, "pm25" => pm_val))
-    end
-
-    # Ordenar cronológicamente
-    sort!(cleaned_pm, by = d -> (d["timestamp"], d["id"]))
-
-    # 3. Adimensionalizar y generar perfil térmico
-    timestamps = [d["timestamp"] for d in cleaned_pm]
-    t_min = minimum(timestamps)
-    t_max = maximum(timestamps)
-    t_range = t_max - t_min
-
-    final_pm_data = Dict{String, Any}[]
-    for d in cleaned_pm
-        id = d["id"]
-        coords = station_coords[id]
-        
-        t_scaled = t_range > 0 ? (d["timestamp"] - t_min) / t_range : 0.0
-        u_scaled = clamp(d["pm25"] / conc_max, 0.0, 1.0)
-        T_scaled = 2.0 * coords["z"] - 1.0
-        
-        push!(final_pm_data, Dict(
-            "id" => string(id),
-            "x" => coords["x"],
-            "y" => coords["y"],
-            "z" => coords["z"],
-            "t" => t_scaled,
-            "u" => u_scaled,
-            "T" => T_scaled,
-            "elevacion_real" => coords["elevacion_real"],
-            "pm25" => d["pm25"],
-            "latitud" => coords["latitud"],
-            "longitud" => coords["longitud"]
-        ))
-    end
-
-    println("✅ Carga y alineación de datos de PM2.5 exitosa: ", length(final_pm_data), " registros procesados.")
+function load_processed_data(pm_path::String)
+    # El preprocesador de Python (src/data/preprocessing.py) ya entrega x, y, z (con elevación real),
+    # t, u y T adimensionales por estación. Antes las coordenadas se tomaban del archivo de viento
+    # cruzando IDs "W-<id>", lo que sólo funcionaba con viento simulado (con estaciones
+    # meteorológicas reales los IDs no coinciden y se descartaba todo el PM2.5).
+    final_pm_data = load_data(pm_path)
+    println("✅ Carga de datos de PM2.5 exitosa: ", length(final_pm_data), " registros procesados.")
     return final_pm_data
 end
 
-function train_interpolative(pm_path::String="data/datos_oficiales_pm25.json", wind_path::String="data/datos_meteorologicos_viento.json")
+function train_interpolative(pm_path::String="data/datos_siata_temporal.json", wind_path::String="data/datos_meteorologicos_viento.json")
     println("==== Iniciando Fase Interpolativa PINN Termodinámica ====")
     
     # Leer hiperparámetros si existen (inyectados por el Agente Python)
@@ -138,7 +57,7 @@ function train_interpolative(pm_path::String="data/datos_oficiales_pm25.json", w
     chains = build_multi_pinn()
 
     # 2. Cargar y procesar datos empíricos (PM2.5) alineados en memoria
-    data = load_processed_data(pm_path, wind_path)
+    data = load_processed_data(pm_path)
     
     # Mitigación de Spatial Data Leakage: División 80/20 basada en estaciones físicas
     station_ids = unique(String[string(get(d, "id", "unknown")) for d in data])
@@ -147,6 +66,10 @@ function train_interpolative(pm_path::String="data/datos_oficiales_pm25.json", w
     n_train = max(1, round(Int, 0.8 * length(shuffled_ids)))
     train_station_ids = shuffled_ids[1:n_train]
     val_station_ids = shuffled_ids[n_train+1:end]
+    # Se guarda la división para evaluar métricas sobre estaciones no vistas (evaluate_metrics.py)
+    open("models/split_estaciones.json", "w") do f
+        JSON.print(f, Dict("train" => train_station_ids, "val" => val_station_ids))
+    end
 
     train_data = filter(d -> string(get(d, "id", "unknown")) in train_station_ids, data)
     val_data = filter(d -> string(get(d, "id", "unknown")) in val_station_ids, data)
@@ -410,7 +333,13 @@ function train_interpolative(pm_path::String="data/datos_oficiales_pm25.json", w
         end
 
         println("Fase 2: Refinando con L-BFGS (usando BackTracking)...")
-        prob2 = Optimization.remake(prob, u0=res1.u)
+        # L-BFGS necesita una función objetivo determinista: con resampling=true los puntos de
+        # colocación cambian en cada evaluación y la búsqueda de línea aborta tras 2-5 iteraciones.
+        strategy_lbfgs = QuasiRandomTraining(512; sampling_alg=ImportanceSampler(), resampling=false, minibatch=1)
+        discretization_lbfgs = PhysicsInformedNN(chains, strategy_lbfgs;
+            additional_loss=additional_loss,
+            weight_strategy=adaptive_strategy)
+        prob2 = Optimization.remake(discretize(pdesys, discretization_lbfgs), u0=res1.u)
         res2 = Optimization.solve(prob2, OptimizationOptimJL.LBFGS(linesearch = LineSearches.BackTracking()); callback=callback_lbfgs, maxiters=lbfgs_iters)
         println("Fase 2 terminada. Loss final L-BFGS: ", res2.objective)
         

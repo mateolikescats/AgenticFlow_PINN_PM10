@@ -77,8 +77,12 @@ def run_realtime_pipeline():
         input_points = []
         for _, row in df_raw_latest_unique.iterrows():
             st_id = row["id"]
-            # Obtener elevación de la estación procesada (o usar promedio de 1500.0 como fallback)
-            elev = station_elev.get(st_id, station_elev.get(int(st_id) if isinstance(st_id, float) else st_id, 1500.0))
+            # Estaciones descartadas por filtrar_geometria_modelo no tienen elevación procesada:
+            # el modelo no las representa, así que no se predice sobre ellas.
+            if st_id not in station_elev:
+                print(f"[INFO] Estación {st_id} fuera de la geometría del modelo; se omite.")
+                continue
+            elev = station_elev[st_id]
             
             # Calcular tiempo escalado t entre [0, 1]
             t_scaled = (row["timestamp"] - time_min) / time_range if time_range > 0 else 0.0

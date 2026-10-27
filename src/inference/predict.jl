@@ -177,9 +177,9 @@ function run_prediction(input_path::String="data/input_points.json", output_path
         for step in 1:15
             pt = reshape([x, y, z, t], 4, 1)
             # Evaluar vientos directamente de la red neuronal en esta coordenada exacta
-            # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
-            vx = -phi[3](pt, theta.depvar.vx)[1]
-            vy = -phi[4](pt, theta.depvar.vy)[1]
+            # El viento ya está en convención física (hacia dónde va); ver siata_scraper.py
+            vx = phi[3](pt, theta.depvar.vx)[1]
+            vy = phi[4](pt, theta.depvar.vy)[1]
             vz = phi[5](pt, theta.depvar.vz)[1]
             
             # Actualizar posición en espacio adimensional
@@ -204,9 +204,9 @@ function run_prediction(input_path::String="data/input_points.json", output_path
         
         # Des-escalar variables físicas usando constantes dinámicas
         pm25_est = clamp(u_pred[i] * conc_max, 0.0, Inf)
-        # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
-        vx_est = -vx_pred[i] * wind_max
-        vy_est = -vy_pred[i] * wind_max
+        # El viento ya está en convención física (hacia dónde va); ver siata_scraper.py
+        vx_est = vx_pred[i] * wind_max
+        vy_est = vy_pred[i] * wind_max
         vz_est = vz_pred[i] * wind_max
         
         # El término de emisión S (fuente predicha de PM2.5 por la PINN Inversa)
@@ -245,14 +245,14 @@ function run_prediction(input_path::String="data/input_points.json", output_path
     # --- PARTE 1: FUENTES URBANAS (TRÁNSITO / CIUDAD) ---
     println("\n1️⃣ Procesando Fuentes Urbanas (Plano del Valle)...")
     urban_centers = [
-        (name="Girardota (Norte)", lat=6.4369602, lon=-75.3303986, id=1, elev=1313.0),
+        (name="Barbosa (Norte)", lat=6.4369602, lon=-75.3303986, id=1, elev=1313.0),
         (name="Copacabana (Norte)", lat=6.3453598, lon=-75.5047531, id=2, elev=1455.0),
         (name="Bello (Norte-Centro)", lat=6.3375502, lon=-75.5678024, id=3, elev=1506.0),
         (name="Medellín Centro (Tráfico)", lat=6.2525611, lon=-75.5695801, id=4, elev=1479.0),
-        (name="Medellín Belén (Industrial)", lat=6.2218938, lon=-75.6106033, id=5, elev=1582.0),
-        (name="Envigado (Sur)", lat=6.1856666, lon=-75.5972061, id=9, elev=1532.0),
-        (name="Envigado Ladera (Sur)", lat=6.1825418, lon=-75.5506363, id=10, elev=1950.0),
-        (name="Itagüí (Sur Industrial)", lat=6.1686831, lon=-75.5819702, id=6, elev=1584.0),
+        (name="Medellín Altavista (Occidente)", lat=6.2218938, lon=-75.6106033, id=5, elev=1582.0),
+        (name="Itagüí (Sur Industrial)", lat=6.1856666, lon=-75.5972061, id=9, elev=1532.0),
+        (name="El Poblado Ladera (Oriente)", lat=6.1825418, lon=-75.5506363, id=10, elev=1950.0),
+        (name="Envigado (Sur)", lat=6.1686831, lon=-75.5819702, id=6, elev=1584.0),
         (name="Sabaneta (Sur)", lat=6.1455002, lon=-75.6212616, id=7, elev=1626.0),
         (name="Caldas (Sur)", lat=6.0930777, lon=-75.6377640, id=8, elev=1759.0)
     ]
@@ -271,9 +271,9 @@ function run_prediction(input_path::String="data/input_points.json", output_path
         S_val = phi[7](pt, theta.depvar.S)[1]
         emision_est = S_val * (conc_max / 3600.0)
         
-        # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
-        vx_est = -phi[3](pt, theta.depvar.vx)[1] * wind_max
-        vy_est = -phi[4](pt, theta.depvar.vy)[1] * wind_max
+        # El viento ya está en convención física (hacia dónde va); ver siata_scraper.py
+        vx_est = phi[3](pt, theta.depvar.vx)[1] * wind_max
+        vy_est = phi[4](pt, theta.depvar.vy)[1] * wind_max
         
         # Trayectoria
         x, y, z, t = x_scaled, y_scaled, z_scaled, 1.0
@@ -281,9 +281,9 @@ function run_prediction(input_path::String="data/input_points.json", output_path
         push!(path, [uc.lon, uc.lat, uc.elev])
         for step in 1:15
             pt_step = reshape([x, y, z, t], 4, 1)
-            # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
-            vx_val = -phi[3](pt_step, theta.depvar.vx)[1]
-            vy_val = -phi[4](pt_step, theta.depvar.vy)[1]
+            # El viento ya está en convención física (hacia dónde va); ver siata_scraper.py
+            vx_val = phi[3](pt_step, theta.depvar.vx)[1]
+            vy_val = phi[4](pt_step, theta.depvar.vy)[1]
             vz_val = phi[5](pt_step, theta.depvar.vz)[1]
             
             x = clamp(x + vx_val * dt_scaled, -1.0, 1.0)
@@ -557,9 +557,9 @@ function run_prediction(input_path::String="data/input_points.json", output_path
         push!(path, [hs.lon, hs.lat, hs.elev])
         for step in 1:15
             pt_step = reshape([x, y, z, t], 4, 1)
-            # Multiplicamos por -1.0 para corregir la convención de viento de meteorológica a física
-            vx_val = -phi[3](pt_step, theta.depvar.vx)[1]
-            vy_val = -phi[4](pt_step, theta.depvar.vy)[1]
+            # El viento ya está en convención física (hacia dónde va); ver siata_scraper.py
+            vx_val = phi[3](pt_step, theta.depvar.vx)[1]
+            vy_val = phi[4](pt_step, theta.depvar.vy)[1]
             vz_val = phi[5](pt_step, theta.depvar.vz)[1]
             
             x = clamp(x + vx_val * dt_scaled, -1.0, 1.0)
@@ -584,8 +584,8 @@ function run_prediction(input_path::String="data/input_points.json", output_path
             "elevacion" => hs.elev,
             "pm25_ug_m3" => round(pm25_est, digits=3),
             "emision_S_ug_m3_s" => round(hs.S, digits=6),
-            "vx" => round(-hs.vx, digits=3), # Negado
-            "vy" => round(-hs.vy, digits=3), # Negado
+            "vx" => round(hs.vx, digits=3),
+            "vy" => round(hs.vy, digits=3),
             "trajectory" => path
         ))
     end

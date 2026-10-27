@@ -3,6 +3,8 @@ import os
 import numpy as np
 import pandas as pd
 
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def get_terrain_height(lon, lat):
     # lat ranges from 6.0 to 6.45
     # lon ranges from -75.7 to -75.3
@@ -40,8 +42,8 @@ def get_color_for_emision(val):
     return f"rgb({r},{g},{b})"
 
 def generate_3d_map():
-    predictions_path = "../data/output_predictions.json"
-    sources_path = "../data/output_sources.json"
+    predictions_path = os.path.join(ROOT, "data", "output_predictions.json")
+    sources_path = os.path.join(ROOT, "data", "output_sources.json")
     
     if not os.path.exists(predictions_path):
         print("[ERROR] No se encontró data/output_predictions.json. Ejecuta primero predict.jl.")
@@ -68,7 +70,7 @@ def generate_3d_map():
     data_loss_list = []
     val_loss_list = []
     
-    historial_path = "../data/historial_perdidas.txt"
+    historial_path = os.path.join(ROOT, "data", "historial_perdidas.txt")
     if os.path.exists(historial_path):
         try:
             hist_df = pd.read_csv(historial_path)
@@ -98,7 +100,7 @@ def generate_3d_map():
             print(f"[WARN] No se pudo leer historial_perdidas.txt: {e}")
 
     pvi_val = 0.0268 # valor de fallback
-    pvi_path = "scratch/data/pvi_data.json"
+    pvi_path = os.path.join(ROOT, "data", "pvi_data.json")
     if os.path.exists(pvi_path):
         try:
             with open(pvi_path, "r", encoding="utf-8") as pf:
@@ -107,10 +109,26 @@ def generate_3d_map():
         except Exception as e:
             print(f"[WARN] No se pudo leer data/pvi_data.json: {e}")
 
+    obs_latest = None
+    data_window = "sin datos SIATA"
+    obs_path = os.path.join(ROOT, "data", "datos_oficiales_pm25.json")
+    if os.path.exists(obs_path):
+        with open(obs_path, "r", encoding="utf-8") as f:
+            obs = pd.DataFrame(json.load(f))
+        if not obs.empty and "fecha" in obs.columns:
+            obs_latest = obs.sort_values("timestamp").groupby("id").last()
+            data_window = f"{obs['fecha'].min()[:16]} → {obs['fecha'].max()[:16]}"
+
     # 2. Generar Receptores GeoJSON (Estaciones SIATA)
     stations_features = []
     for idx, r in df.iterrows():
         pm25 = r["pred_pm25_ug_m3"]
+        st_name, pm25_obs, fecha_obs = f"Sensor #{int(r.get('id', idx))}", None, None
+        if obs_latest is not None:
+            d2 = (obs_latest["latitud"] - r["latitud"])**2 + (obs_latest["longitud"] - r["longitud"])**2
+            if d2.min() < 1e-6:
+                o = obs_latest.loc[d2.idxmin()]
+                st_name, pm25_obs, fecha_obs = o["nombre"], float(o["pm25"]), o["fecha"][:16]
         s_val = r.get("pred_emision_S_ug_m3_s", 0.0)
         
         color_u = get_color_for_pm25(pm25)
@@ -120,7 +138,9 @@ def generate_3d_map():
             "type": "Feature",
             "properties": {
                 "id": int(r.get("id", idx)),
-                "name": f"Sensor #{int(r.get('id', idx))}",
+                "name": st_name,
+                "pm25_obs": pm25_obs,
+                "fecha_obs": fecha_obs,
                 "latitud": float(r["latitud"]),
                 "longitud": float(r["longitud"]),
                 "pm25": float(pm25),
@@ -748,6 +768,7 @@ def generate_3d_map():
                 <span class="badge">Diagnóstico iPINN Inversa</span>
                 <h1>iPINN 3D: Diagnóstico Físico</h1>
                 <div class="subtitle">Análisis Inverso y Auditoría de Conservación de Masa</div>
+                <div class="subtitle">Datos SIATA: {data_window_placeholder}</div>
             </div>
 
             <div>
@@ -869,6 +890,10 @@ def generate_3d_map():
                             <span>Sensor Seleccionado:</span>
                             <span id="contrib-station-name" style="font-weight:600; color:#818cf8;">-</span>
                         </div>
+                        <div class="interactive-row">
+                            <span>PM2.5:</span>
+                            <span id="contrib-station-obs" style="font-weight:600; color:#facc15;">-</span>
+                        </div>
                         <div id="contrib-list" style="margin-top:2px;"></div>
                         
                         <!-- PRONÓSTICO TEMPORAL CHART -->
@@ -986,7 +1011,7 @@ def generate_3d_map():
                     <div class="legend-item">
                         <div class="legend-icon icon-station"></div>
                         <div>
-                            <b>Receptores SIATA:</b> Concentraciones de PM2.5 medidas directamente en las estaciones oficiales.
+                            <b>Receptores SIATA:</b> PM2.5 estimado por la iPINN en las estaciones oficiales (la ficha muestra también la última medición).
                         </div>
                     </div>
                     <div class="legend-item">
@@ -1907,6 +1932,13 @@ def generate_3d_map():
                 .map(c => c.id);
 
             document.getElementById('contrib-station-name').innerText = st_name;
+            const stObs = stationsGeoJSON.features.find(f => f.properties.name === st_name);
+            const obsEl = document.getElementById('contrib-station-obs');
+            if (stObs && stObs.properties.pm25_obs !== null) {
+                obsEl.innerText = `${stObs.properties.pm25_obs.toFixed(0)} µg/m³ medido (${stObs.properties.fecha_obs}) · ${stObs.properties.base_pm25.toFixed(1)} iPINN`;
+            } else {
+                obsEl.innerText = '-';
+            }
             
             let html = '<table style="width:100%; font-size:11px; margin-top:8px; border-collapse:collapse; color:#e2e8f0;">';
             html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.12); color:#64748b; font-weight:600;"><th style="text-align:left; padding:4px 0;">Foco de Origen</th><th style="text-align:right; padding:4px 0;">Aporte</th></tr>';
@@ -2875,9 +2907,10 @@ def generate_3d_map():
                   .replace("{latest_pde_loss}", f"{latest_metrics['pde_loss']:.5f}")
                   .replace("{latest_data_loss}", f"{latest_metrics['data_loss']:.5f}")
                   .replace("{latest_val_loss}", f"{latest_metrics['val_loss']:.5f}")
-                  .replace("{latest_pvi}", f"{pvi_val:.6f}"))
+                  .replace("{latest_pvi}", f"{pvi_val:.6f}")
+                  .replace("{data_window_placeholder}", data_window))
 
-    output_html = "../reporte/mapa_3d_interactivo.html"
+    output_html = os.path.join(ROOT, "reporte", "mapa_3d_interactivo.html")
     os.makedirs(os.path.dirname(output_html), exist_ok=True)
     with open(output_html, "w", encoding="utf-8") as f:
         f.write(final_html)

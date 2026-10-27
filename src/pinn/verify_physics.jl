@@ -115,20 +115,60 @@ function verify_physics(model_path::String="models/modelo_pinn.jld2")
     # Divergencia del viento y PVI
     div_v = dvx_dx .+ dvy_dy .+ dvz_dz
     abs_div = abs.(div_v)
-    
-    pvi = sum(abs_div) / N
-    max_div = maximum(abs_div)
-    min_div = minimum(div_v)
-    max_div_raw = maximum(div_v)
 
-    println("=== Métricas de Auditoría Física ===")
+    # Sólo la atmósfera modelada: bajo el relieve parabólico (z < 0.4x² - 0.05) el ImportanceSampler
+    # no coloca puntos, así que ahí la red no tiene restricción física y no debe entrar en la métrica.
+    atm = vec(coords[3, :] .>= 0.4 .* coords[1, :].^2 .- 0.05)
+    abs_div_atm = vec(abs_div)[atm]
+
+    pvi = sum(abs_div_atm) / length(abs_div_atm)
+    pvi_grilla_completa = sum(abs_div) / N
+    max_div = maximum(abs_div_atm)
+    min_div = minimum(vec(div_v)[atm])
+    max_div_raw = maximum(vec(div_v)[atm])
+
+    # Índice relativo: |div| / (|∂vx/∂x| + |∂vy/∂y| + |∂vz/∂z|) ∈ [0, 1], independiente de la magnitud del viento
+    # (0 = los tres términos se compensan, 1 = ninguna compensación)
+    suma_terminos = vec(abs.(dvx_dx) .+ abs.(dvy_dy) .+ abs.(dvz_dz))[atm]
+    pvi_relativo = sum(abs_div_atm) / max(sum(suma_terminos), eps())
+
+    # Divergencia en unidades físicas (1/s): longitudes del dominio en metros y velocidades en m/s
+    config = JSON.parsefile("data/domain_config.json")
+    lat_c = deg2rad((config["lat_min"] + config["lat_max"]) / 2)
+    Lx = (config["lon_max"] - config["lon_min"]) * 111_320.0 * cos(lat_c)
+    Ly = (config["lat_max"] - config["lat_min"]) * 110_574.0
+    Lz = config["elev_max"] - config["elev_min"]
+    w = config["wind_max"]
+    div_fisica = vec(w .* (2 / Lx .* dvx_dx .+ 2 / Ly .* dvy_dy .+ 1 / Lz .* dvz_dz))[atm]
+    div_fisica_media = sum(abs.(div_fisica)) / length(div_fisica)
+
+    # NVR: fracción de la atmósfera con concentración negativa · TSI: fracción con ∂T/∂z > 0 en la capa de inversión
+    T_zp = phi[2](coords_zp, theta.depvar.T)
+    T_zm = phi[2](coords_zm, theta.depvar.T)
+    dT_dz = vec((T_zp .- T_zm) ./ (2h))
+    nvr = count(<(0), vec(u_base)[atm]) / count(atm)
+    capa_inversion = atm .& (abs.(vec(coords[3, :]) .- 0.5) .<= 0.1)
+    tsi_positivo = count(>(0), dT_dz[capa_inversion]) / max(count(capa_inversion), 1)
+
+    println("=== Métricas de Auditoría Física (atmósfera modelada, $(count(atm)) de $N celdas) ===")
     println("Physics Violation Index (PVI - Divergencia Media Absoluta): $pvi")
+    println("PVI sobre la grilla completa (incluye subsuelo, sólo referencia): $pvi_grilla_completa")
+    println("PVI relativo (0 = masa conservada, 1 = sin compensación): $pvi_relativo")
+    println("Divergencia física media |∇·v|: $div_fisica_media 1/s")
     println("Divergencia Máxima Absoluta: $max_div")
     println("Divergencia Rango: [$min_div, $max_div_raw]")
+    println("NVR (fracción con u < 0): $nvr")
+    println("TSI (fracción con ∂T/∂z > 0 en z ∈ [0.4, 0.6]): $tsi_positivo")
 
     # 5. Exportar datos a JSON para graficar en Python
     results = Dict(
         "pvi" => pvi,
+        "pvi_grilla_completa" => pvi_grilla_completa,
+        "pvi_relativo" => pvi_relativo,
+        "div_fisica_media_1_s" => div_fisica_media,
+        "nvr" => nvr,
+        "tsi_positivo" => tsi_positivo,
+        "atmosfera" => collect(atm),
         "max_div" => max_div,
         "nx" => nx,
         "ny" => ny,

@@ -17,7 +17,7 @@ El proyecto se está desarrollando de forma iterativa y "hueso a hueso" para gar
 
 ### ✅ Fase 1: Fundamentos Geoespaciales y Datos (Python)
 **Estado:** `Completado`
-- **Ingeniería de Datos**: Extracción directa e histórica de la **Red Oficial de Calidad de Aire** vía el portal de Datos Abiertos de Medellín (`siata_scraper.py`).
+- **Ingeniería de Datos**: Extracción de las últimas 72 h de PM2.5 horario de la **Red Oficial de Calidad de Aire** y de la última lectura de viento de la red meteorológica vía la API del geoportal de SIATA (`geoportal.siata.gov.co/fastgeoapi`), ya que el portal de Datos Abiertos del Metropol dejó de responder (`siata_scraper.py`).
 - **Filtrado de Ruido**: Algoritmo `IsolationForest` para detectar y descartar lecturas anómalas.
 - **Restricción de Dominio ($\Omega$)**: Bounding box topológico del Valle de Aburrá (Lat $[6.00, 6.45]$, Lon $[-75.70, -75.30]$).
 - **Mapeo Topográfico Real en 3D**: Uso de la **Open-Elevation API** para extraer la altitud precisa sobre el nivel del mar para cada estación y escalar la dimensión $z$, reemplazando asunciones planas (`preprocessing.py`).
@@ -143,6 +143,7 @@ Asegúrese de tener Julia `1.10+` instalado.
 julia init_julia.jl
 ```
 *Nota: La primera instalación descargará y compilará el stack científico de SciML (NeuralPDE, Optimization), lo que puede tomar entre 5 y 10 minutos.*
+*El código usa la API de NeuralPDE 6.x (`GradientScaleAdaptiveLoss`, `additional_loss(phi, θ, p)`); `Project.toml` fija `NeuralPDE = "6"` en `[compat]` porque NeuralPDE 7 eliminó esa API.*
 ### 3. Estructura de Directorios
 
 El proyecto cuenta con una separación clara para mantener las buenas prácticas:

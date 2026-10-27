@@ -145,7 +145,7 @@ end
 # ==============================================================================
 const QMC = NeuralPDE.QuasiMonteCarlo
 
-struct ImportanceSampler <: QMC.SamplingAlgorithm end
+struct ImportanceSampler <: QMC.RandomSamplingAlgorithm end
 
 function QMC.sample(n::Integer, d::Integer, sampler::ImportanceSampler, T::Type)
     base_samples = QMC.sample(n, d, QMC.LatinHypercubeSample(), T)
